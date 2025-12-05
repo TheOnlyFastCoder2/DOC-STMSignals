@@ -1,0 +1,25 @@
+.Popup {
+  &.overlay {
+    width: 100vw;
+    height: 100vh;
+    z-index: 900;
+    position: fixed;
+    inset: 0;
+    cursor: pointer;
+
+    .content {
+      cursor: default;
+    }
+
+    &:before {
+      content: '';
+      display: block;
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      transition: opacity 0.5s ease-out;
+      background: #0000003e;
+      z-index: -1;
+    }
+  }
+}
