@@ -19,154 +19,7 @@
 
 ```ts
 export type Sig<T = any> = Signal<T> | Computed<T>;
-````
-
-Просто «любой реактивный узел», с которым работает этот слой —
-либо `Signal<T>`, либо `Computed<T>`. Удобно для общих утилит.
-
----
-
-### `ReactSigMeta` и `.c`
-
-```ts
-type ReactSigMeta = { c: React.JSX.Element };
-```
-
-Это маленький «хвостик» к сигналу: поле `c`, в котором уже лежит **готовый React-элемент**, подписанный на этот сигнал.
-
-* Для `TRSignal<T>` / `TRComputed<T>` `.c` — это компонент, который:
-
-  * подписывается на сигнал через `useSyncExternalStore`;
-  * при каждом изменении сигнала сам перерисовывается;
-  * внутри рендерит актуальное значение (или то, что ты ему вернул).
-
----
-
-### `TRSignal<T>` и `TRComputed<T>`
-
-```ts
-export type TRSignal<T> = Signal<T> & ReactSigMeta;
-export type TRComputed<T> = Computed<T> & ReactSigMeta;
-```
-
-Это те же `Signal` / `Computed`, только уже **React-готовые**:
-
-* их можно использовать как обычные сигналы (`.v`);
-* у них есть `.c`, который можно прямо воткнуть в JSX:
-
-```tsx
-const count = signalRC(0);
-
-function App() {
-  return (
-    <div>
-      {count.c}
-      <button onClick={() => (count.v += 1)}>+</button>
-    </div>
-  );
-}
-```
-
----
-
-### `ReactDeep<T>`
-
-```ts
-type Reactify<S> =
-  S extends Signal<infer U>
-    ? TRSignal<U>
-    : S extends Computed<infer U>
-      ? TRComputed<U>
-      : S extends ReadonlyArray<infer U>
-        ? ReadonlyArray<Reactify<U>>
-        : S extends object
-          ? { [K in keyof S]: Reactify[S[K]] }
-          : S;
-
-export type ReactDeep<T> = Reactify<DeepSignal<T>>;
-```
-
-`ReactDeep<T>` — это «DeepSignal, но с `.c` на каждом листе».
-
-Если `DeepSignal<T>` строит дерево сигналов,
-то `ReactDeep<T>` добавляет к каждому листовому сигналу ещё и React-представление.
-
----
-
-### `TRMapSignal<T>`
-
-```ts
-type BaseMap<T> = Omit<SignalMap<T>, 'map' | 'v'>;
-
-export type TRMapSignal<T> = BaseMap<T> & {
-  readonly v: ReadonlyArray<ReactDeep<T>>;
-  map(renderFn: (item: ReactDeep<T>, index: number) => any): React.ReactElement;
-};
-```
-
-Это `SignalMap<T>`, адаптированный под React:
-
-* его `v` — это массив `ReactDeep<T>` (каждый элемент уже с `.c`);
-* у него есть метод `map(renderFn)`, который возвращает **React-элемент**:
-
-  * под капотом создаётся мемоизированный компонент;
-  * он подписан на список;
-  * и при каждом изменении списка заново прогоняет `renderFn` по `state`.
-
-Пример:
-
-```tsx
-
-
-function UserList() {
-  const users = useSignalMap([{ id: 1, name: 'Alice' }]);
-  
-  return users.map(user => (
-    <div key={user.id.v}>{user.name.c}</div>
-  ));
-}
-```
-
----
-
-## Внутренний слушатель: `useSignalListener`
-
-```ts
-function useSignalListener(): [() => void, <T>(s: Signal<T> | Computed<T>) => T];
-```
-
-Хук, который даёт:
-
-* `notify()` — функция, которая «пинает» всех подписчиков;
-* `externalStore(sig)` — обёртку над `useSyncExternalStore`, привязанную к одному набору слушателей.
-
-Внутри:
-
-* хранится `Set` слушателей;
-* `useSyncExternalStore` подписывается на добавление/удаление этих слушателей;
-* при вызове `notify()` все слушатели дергаются, и React понимает, что нужно перерендерить.
-
-Ты этим хелпером напрямую не пользуешься — он лежит под `useSignal`, `useComputed`, `useSignalMap` и т.д.
-
----
-
-## Конструктор `.c`: `definedComponent`
-
-```ts
-function definedComponent(externalStore: ExternalStore, sig: Sig) { ... }
-```
-
-Берёт сигнал/компьютед и:
-
-1. создаёт `memo`-компонент, который подписывается на `sig.v` через `externalStore`;
-2. внутри рендерит `renderValue(value)`;
-3. вешает этот компонент на `sig.c` через `Object.defineProperty`.
-
-После этого любой `sig` с такой обработкой можно просто рендерить как `{sig.c}`.
-
----
-
-### `renderValue`
+````### `renderValue`
 
 ```ts
 export function renderValue<T>(value: T): React.ReactElement;
@@ -375,14 +228,16 @@ function TodoList() {
   const todos = useTodos();
 
   return todos.map(todo => (
-    <label key={todo.id.v}>
-      <input
-        type="checkbox"
-        checked={todo.done.v}
-        onChange={e => (todo.done.v = e.target.checked)}
-      />
-      {todo.text.c}
-    </label>
+    <Active sg={todo.done.v}>
+      <label key={todo.id.v}>
+        <input
+          type="checkbox"
+          checked={todo.done.v}
+          onChange={e => (todo.done.v = e.target.checked)}
+        />
+        {todo.text.c}
+      </label>
+    </Active>
   ));
 }
 ```
@@ -415,4 +270,151 @@ React-слой делает три вещи:
 3. Добавляет к сигналам и спискам маленький бонус в виде `.c`, чтобы их можно было рендерить прямо в JSX без лишней обвязки.
 
 Ты по-прежнему думаешь в терминах **сигналов и эффектов**,
-но React-компоненты при этом живут своей обычной жизнью, просто «слушая» реактивное ядро.
+но React-компоненты при этом живут с
+
+Просто «любой реактивный узел», с которым работает этот слой —
+либо `Signal<T>`, либо `Computed<T>`. Удобно для общих утилит.
+
+---
+
+### `ReactSigMeta` и `.c`
+
+```ts
+type ReactSigMeta = { c: React.JSX.Element };
+```
+
+Это маленький «хвостик» к сигналу: поле `c`, в котором уже лежит **готовый React-элемент**, подписанный на этот сигнал.
+
+* Для `TRSignal<T>` / `TRComputed<T>` `.c` — это компонент, который:
+
+  * подписывается на сигнал через `useSyncExternalStore`;
+  * при каждом изменении сигнала сам перерисовывается;
+  * внутри рендерит актуальное значение (или то, что ты ему вернул).
+
+---
+
+### `TRSignal<T>` и `TRComputed<T>`
+
+```ts
+export type TRSignal<T> = Signal<T> & ReactSigMeta;
+export type TRComputed<T> = Computed<T> & ReactSigMeta;
+```
+
+Это те же `Signal` / `Computed`, только уже **React-готовые**:
+
+* их можно использовать как обычные сигналы (`.v`);
+* у них есть `.c`, который можно прямо воткнуть в JSX:
+
+```tsx
+const count = signalRC(0);
+
+function App() {
+  return (
+    <div>
+      {count.c}
+      <button onClick={() => (count.v += 1)}>+</button>
+    </div>
+  );
+}
+```
+
+---
+
+### `ReactDeep<T>`
+
+```ts
+type Reactify<S> =
+  S extends Signal<infer U>
+    ? TRSignal<U>
+    : S extends Computed<infer U>
+      ? TRComputed<U>
+      : S extends ReadonlyArray<infer U>
+        ? ReadonlyArray<Reactify<U>>
+        : S extends object
+          ? { [K in keyof S]: Reactify[S[K]] }
+          : S;
+
+export type ReactDeep<T> = Reactify<DeepSignal<T>>;
+```
+
+`ReactDeep<T>` — это «DeepSignal, но с `.c` на каждом листе».
+
+Если `DeepSignal<T>` строит дерево сигналов,
+то `ReactDeep<T>` добавляет к каждому листовому сигналу ещё и React-представление.
+
+---
+
+### `TRMapSignal<T>`
+
+```ts
+type BaseMap<T> = Omit<SignalMap<T>, 'map' | 'v'>;
+
+export type TRMapSignal<T> = BaseMap<T> & {
+  readonly v: ReadonlyArray<ReactDeep<T>>;
+  map(renderFn: (item: ReactDeep<T>, index: number) => any): React.ReactElement;
+};
+```
+
+Это `SignalMap<T>`, адаптированный под React:
+
+* его `v` — это массив `ReactDeep<T>` (каждый элемент уже с `.c`);
+* у него есть метод `map(renderFn)`, который возвращает **React-элемент**:
+
+  * под капотом создаётся мемоизированный компонент;
+  * он подписан на список;
+  * и при каждом изменении списка заново прогоняет `renderFn` по `state`.
+
+Пример:
+
+```tsx
+
+
+function UserList() {
+  const users = useSignalMap([{ id: 1, name: 'Alice' }]);
+  
+  return users.map(user => (
+    <div key={user.id.v}>{user.name.c}</div>
+  ));
+}
+```
+
+---
+
+## Внутренний слушатель: `useSignalListener`
+
+```ts
+function useSignalListener(): [() => void, <T>(s: Signal<T> | Computed<T>) => T];
+```
+
+Хук, который даёт:
+
+* `notify()` — функция, которая «пинает» всех подписчиков;
+* `externalStore(sig)` — обёртку над `useSyncExternalStore`, привязанную к одному набору слушателей.
+
+Внутри:
+
+* хранится `Set` слушателей;
+* `useSyncExternalStore` подписывается на добавление/удаление этих слушателей;
+* при вызове `notify()` все слушатели дергаются, и React понимает, что нужно перерендерить.
+
+Ты этим хелпером напрямую не пользуешься — он лежит под `useSignal`, `useComputed`, `useSignalMap` и т.д.
+
+---
+
+## Конструктор `.c`: `definedComponent`
+
+```ts
+function definedComponent(externalStore: ExternalStore, sig: Sig) { ... }
+```
+
+Берёт сигнал/компьютед и:
+
+1. создаёт `memo`-компонент, который подписывается на `sig.v` через `externalStore`;
+2. внутри рендерит `renderValue(value)`;
+3. вешает этот компонент на `sig.c` через `Object.defineProperty`.
+
+После этого любой `sig` с такой обработкой можно просто рендерить как `{sig.c}`.
+
+---
+
+воей обычной жизнью, просто «слушая» реактивное ядро.
