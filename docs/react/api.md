@@ -227,13 +227,16 @@ function TodoList() {
 
   return todos.map((todo) => (
     <label key={todo.id.v}>
-      <Active sg={todo.done}>
-        <input
-          type="checkbox"
-          checked={todo.done.v}
-          onChange={(e) => (todo.done.v = e.target.checked)}
-        />
-      </Active>
+      <Active
+        sg={todo.done}
+        children={() => (
+          <input
+            type="checkbox"
+            checked={todo.done.v}
+            onChange={(e) => (todo.done.v = e.target.checked)}
+          />
+        )}
+      />
       {todo.text.c}
     </label>
   ));
