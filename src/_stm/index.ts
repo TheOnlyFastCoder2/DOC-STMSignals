@@ -15,6 +15,7 @@ if (typeof globalThis.cancelAnimationFrame === 'undefined') {
 }
 
 /* ======================== Types ====================== */
+
 type Priority = 'high' | 'normal' | 'low';
 type Phase = 'update' | 'commit' | 'idle';
 export type ErrorWhere = 'effect' | 'computed';
@@ -68,6 +69,55 @@ const LOW_FORCE_EVERY_N_FRAMES = 6;
 /* ---- Intra-frame HIGH bump ---- */
 const HIGH_BURST_LIMIT = 2;
 
+type SchedulerMode = 'frame' | 'sync';
+let schedulerMode: SchedulerMode = 'frame';
+
+export function setSchedulerMode(mode: SchedulerMode) {
+  if (schedulerMode === mode) return;
+  schedulerMode = mode;
+
+  if (mode === 'sync') {
+    if (rafId != null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+
+    const all = new Set<Effect>();
+    queues.high.forEach((e) => all.add(e));
+    queues.normal.forEach((e) => all.add(e));
+    queues.low.forEach((e) => all.add(e));
+    queues.high.clear();
+    queues.normal.clear();
+    queues.low.clear();
+
+    all.forEach((e) => scheduleSyncEffect(e));
+  }
+}
+
+let syncQueue: Set<Effect> | null = null;
+let isRunningSyncQueue = false;
+
+function scheduleSyncEffect(eff: Effect) {
+  if (eff.isDisposed) return;
+
+  if (!syncQueue) syncQueue = new Set();
+  syncQueue.add(eff);
+
+  if (isRunningSyncQueue) return; // уже крутится, просто добавили
+
+  isRunningSyncQueue = true;
+  try {
+    while (syncQueue.size) {
+      const it = syncQueue.values().next().value as Effect;
+      syncQueue.delete(it);
+      if (!it.isDisposed && it._dirty) it.run();
+    }
+  } finally {
+    isRunningSyncQueue = false;
+    syncQueue = null;
+  }
+}
+
 /* ===================== Links ========================= */
 export interface Link {
   source: Signal | Computed;
@@ -91,6 +141,25 @@ function adaptBudgets(frameMs: number) {
   }
 }
 
+function scheduleEffect(eff: Effect) {
+  if (eff.isDisposed) return;
+
+  // логическое батчинг выше всего
+  if (batchedEffects) {
+    batchedEffects.add(eff);
+    return;
+  }
+
+  // глобальный режим может форсить sync
+  const useSync = schedulerMode === 'sync' || eff.mode === 'sync';
+
+  if (useSync) {
+    scheduleSyncEffect(eff);
+  } else {
+    schedule(eff); // твой текущий планировщик с queues + RAF
+  }
+}
+
 function scheduleRAF() {
   if (rafId != null) return;
   rafId = requestAnimationFrame(runFrame);
@@ -102,14 +171,28 @@ function schedule(eff: Effect) {
 }
 
 function enqueueOrBatch(eff: Effect) {
-  if (batchedEffects) batchedEffects.add(eff);
-  else schedule(eff);
+  scheduleEffect(eff);
 }
 
 function scheduleFromBatch(toSchedule: Set<Effect>, requestRaf = true) {
-  for (const eff of toSchedule) queues[eff.priority].add(eff);
+  for (const eff of toSchedule) {
+    const useSync = schedulerMode === 'sync' || eff.mode === 'sync';
+
+    if (useSync) {
+      scheduleSyncEffect(eff);
+    } else {
+      queues[eff.priority].add(eff);
+    }
+  }
   toSchedule.clear();
-  if (requestRaf) scheduleRAF();
+
+  if (
+    requestRaf &&
+    schedulerMode === 'frame' &&
+    (queues.high.size || queues.normal.size || queues.low.size)
+  ) {
+    scheduleRAF();
+  }
 }
 
 function runHighQueue(limit = Infinity) {
@@ -375,6 +458,8 @@ export class Computed<T = any> {
 
 /* ===================== Effect ======================== */
 type EffectOptions = { lazy?: boolean };
+type EffectKind = Priority | 'sync';
+type EffectMode = 'frame' | 'sync';
 
 export class Effect {
   _sources?: Link;
@@ -385,11 +470,24 @@ export class Effect {
   isDisposed = false;
   private _running = false;
   priority: Priority;
+  mode: EffectMode;
 
-  constructor(fn: () => void | (() => void), priority: Priority = 'normal', opts?: EffectOptions) {
+  constructor(
+    fn: () => void | (() => void),
+    priorityOrMode: EffectKind = 'normal',
+    opts?: EffectOptions
+  ) {
     this.fn = fn;
-    this.priority = priority;
     this._dirty = true;
+
+    if (priorityOrMode === 'sync') {
+      this.mode = 'sync';
+      this.priority = 'normal';
+    } else {
+      this.mode = 'frame';
+      this.priority = priorityOrMode;
+    }
+
     if (opts?.lazy) enqueueOrBatch(this);
     else this.run();
   }
@@ -416,14 +514,17 @@ export class Effect {
       }
     } finally {
       this._running = false;
-      if (this._dirty && !this.isDisposed) enqueueOrBatch(this);
+
+      if (this._dirty && !this.isDisposed) {
+        scheduleEffect(this);
+      }
     }
   }
 
   markDirty() {
     if (this.isDisposed || this._dirty) return;
     this._dirty = true;
-    enqueueOrBatch(this);
+    scheduleEffect(this);
   }
 
   dispose() {
@@ -457,12 +558,11 @@ export function signalClient<T>(init: () => T) {
 export const computed = <T>(fn: () => T) => new Computed<T>(fn);
 export const effect = (
   fn: () => void | (() => void),
-  priority: Priority = 'normal',
+  kind: EffectKind = 'normal',
   opts?: EffectOptions
-) => new Effect(fn, priority, opts);
+) => new Effect(fn, kind, opts);
 
 export const __SSR_STATE__: Record<string, any> = {};
-
 
 export type SSRSignal<T> = Signal<T> & { __ssrId: string };
 export function ssrSignal<T>(initial: T, explicitId: string): SSRSignal<T> {
@@ -545,5 +645,7 @@ export function setPriority(eff: Effect, p: Priority) {
   queues.normal.delete(eff);
   queues.low.delete(eff);
   eff.priority = p;
-  if (eff._dirty) schedule(eff);
+  if (eff._dirty && eff.mode === 'frame') {
+    scheduleEffect(eff);
+  }
 }
