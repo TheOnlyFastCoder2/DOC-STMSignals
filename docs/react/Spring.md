@@ -2,7 +2,7 @@
 
 Все анимации в этом шаблоне (включая скролл-анимации, hover-эффекты, 3D-наклон карточек и мягкие появляющиеся блоки) построены вокруг одного компонента — [`<Spring>`](#spring).
 
-Это ссылка на сайт с примерами: https://open-react-template-4pyf.vercel.app/    
+Это ссылка на сайт с примерами: https://open-react-template-4pyf.vercel.app/  
 Git репозиторий сайта: https://github.com/TheOnlyFastCoder2/open-react-template
 
 Ключевая идея: **React-дерево остаётся максимально стабильным**.
@@ -22,7 +22,6 @@ React занимается структурой и разметкой, а `<Spri
 - как устроен `debug`-режим, который рисует горизонтальные «линии входа/выхода» для анимаций поверх страницы.
 
 Все примеры ниже — это вариации одного и того же строительного блока `<Spring>`.
-
 
 ### API по-простому
 
@@ -79,12 +78,12 @@ export interface SpringProps {
 
 Запомнить стоит только:
 
-* `spring` — **карта свойств** (`scale`, `opacity`, `translateX`…) → конфиг пружины;
-* `triggers` — список событий указателя, на которые этот `Spring` реагирует;
-* `visibility` — правила «когда считается видимым» (через `useVisibilitySignal`);
-* `isActive` / `phase` — внешнее реактивное управление фазой;
-* `phases + onToggle` — обратная связь: «когда элемент вошёл в нужную фазу»;
-* `className` / `classInner` — классы на внешней и внутренней обёртке.
+- `spring` — **карта свойств** (`scale`, `opacity`, `translateX`…) → конфиг пружины;
+- `triggers` — список событий указателя, на которые этот `Spring` реагирует;
+- `visibility` — правила «когда считается видимым» (через `useVisibilitySignal`);
+- `isActive` / `phase` — внешнее реактивное управление фазой;
+- `phases + onToggle` — обратная связь: «когда элемент вошёл в нужную фазу»;
+- `className` / `classInner` — классы на внешней и внутренней обёртке.
 
 ---
 
@@ -97,7 +96,7 @@ export interface SpringProps {
 export const animText = {
   spring: {
     opacity: { values: { default: 0, active: 1 }, stiffness: 100, damping: 20 },
-    scale:   { values: { default: 0.9, active: 1 }, stiffness: 140, damping: 70 },
+    scale: { values: { default: 0.9, active: 1 }, stiffness: 140, damping: 70 },
   },
 };
 ```
@@ -115,12 +114,10 @@ function FeaturesSection() {
         <Spring
           {...animText}
           visibility={{
-            enterAt: [[0, 1]],  // как только блок попал в окно
+            enterAt: [[0, 1]], // как только блок попал в окно
           }}
         >
-          <h2 className="FeaturesSectionTitle">
-            Built for modern product teams
-          </h2>
+          <h2 className="FeaturesSectionTitle">Built for modern product teams</h2>
         </Spring>
 
         <Spring
@@ -130,9 +127,7 @@ function FeaturesSection() {
             delay: 300,
           }}
         >
-          <p className="FeaturesSectionSubtitle">
-            Open AI reads and understands your files…
-          </p>
+          <p className="FeaturesSectionSubtitle">Open AI reads and understands your files…</p>
         </Spring>
       </div>
     </section>
@@ -142,8 +137,8 @@ function FeaturesSection() {
 
 Ментальная модель:
 
-* пока элемент **не** в зоне `enterAt` → фаза `default` (`opacity = 0`, `scale = 0.9`);
-* когда вошёл в зону видимости → фаза `active` → сигналы плавно переходят к `opacity = 1`, `scale = 1`.
+- пока элемент **не** в зоне `enterAt` → фаза `default` (`opacity = 0`, `scale = 0.9`);
+- когда вошёл в зону видимости → фаза `active` → сигналы плавно переходят к `opacity = 1`, `scale = 1`.
 
 ---
 
@@ -174,22 +169,22 @@ spring={{
 
 Каждое свойство:
 
-* берётся из `initConfig` (поддерживаемый список);
+- берётся из `initConfig` (поддерживаемый список);
 
-* может задать `values` по фазам:
+- может задать `values` по фазам:
 
-  * если есть `values[phase]` → берем его;
-  * иначе, если есть `values.default` → используем его;
-  * иначе — значение из `initConfig`;
+  - если есть `values[phase]` → берем его;
+  - иначе, если есть `values.default` → используем его;
+  - иначе — значение из `initConfig`;
 
-* `stiffness` и `damping` управляют «жёсткостью» и «затуханием» пружины;
+- `stiffness` и `damping` управляют «жёсткостью» и «затуханием» пружины;
 
-* `triggers` можно задать локально для конкретного свойства (если нужно, чтобы на hover реагировал только `scale`, а не всё подряд).
+- `triggers` можно задать локально для конкретного свойства (если нужно, чтобы на hover реагировал только `scale`, а не всё подряд).
 
 Фазы:
 
-* **событийные**: `enter`, `leave`, `down`, `up`;
-* **состояния**: `default`, `active`.
+- **событийные**: `enter`, `leave`, `down`, `up`;
+- **состояния**: `default`, `active`.
 
 `Spring` при смене фазы делает `batch(() => { ... })` и разом обновляет все сигналы `st.*`, а `useSpringSignal` уже плавно доводит DOM до нужных значений.
 
@@ -208,9 +203,9 @@ function FeatureCard({ title, text }: { title: string; text: string }) {
       spring={{
         scale: {
           values: {
-            leave: 1,    // курсор ушёл
+            leave: 1, // курсор ушёл
             enter: 1.05, // навели
-            down:  0.97, // зажали кнопку
+            down: 0.97, // зажали кнопку
           },
           stiffness: 120,
           damping: 10,
@@ -240,9 +235,9 @@ function FeatureCard({ title, text }: { title: string; text: string }) {
 
 Здесь:
 
-* `triggers={['hover', 'down', 'up']}` включает pointer-обработчики;
-* `values.leave/enter/down` описывают, как должен вести себя `scale` и `boxShadow`;
-* `phases + onToggle` дают простой callback о переходе `leave ↔ enter`.
+- `triggers={['hover', 'down', 'up']}` включает pointer-обработчики;
+- `values.leave/enter/down` описывают, как должен вести себя `scale` и `boxShadow`;
+- `phases + onToggle` дают простой callback о переходе `leave ↔ enter`.
 
 ---
 
@@ -314,13 +309,12 @@ function FeaturesGrid({ items }: { items: { title: string; text: string }[] }) {
 
 ## 5. `visibility`: когда Spring «виден» и что с этим делать
 
-`visibility` — это конфиг для `useVisibilitySignal`, который `Spring` использует внутри.
-Через него можно:
+`visibility` — это конфиг для `useVisibilitySignal`, который `Spring` использует внутри. Через него можно:
 
-* задать, где элемент **входит** в активную зону (`enterAt`);
-* где он из неё **выходит** (`leaveAt`);
-* добавить `delay`;
-* включить `debug` (об этом ниже).
+- задать, где элемент **входит** в активную зону (`enterAt`);
+- где он из неё **выходит** (`leaveAt`);
+- добавить `delay`;
+- включить `debug` (об этом ниже).
 
 Пример:
 
@@ -331,23 +325,21 @@ function FeaturesGrid({ items }: { items: { title: string; text: string }[] }) {
     translateY: { values: { default: 24, active: 0 } },
   }}
   visibility={{
-    enterAt: [[0.1, 0.9]],   // 10–90% высоты окна
-    leaveAt: [[0.9, 1.2]],   // считаем «ушёл», когда выезжает ниже 90–120%
+    enterAt: [[0.1, 0.9]], // 10–90% высоты окна
+    leaveAt: [[0.9, 1.2]], // считаем «ушёл», когда выезжает ниже 90–120%
     delay: 150,
   }}
 >
-  <div className="VisibilityBlock">
-    Я появляюсь и исчезаю по скроллу
-  </div>
+  <div className="VisibilityBlock">Я появляюсь и исчезаю по скроллу</div>
 </Spring>
 ```
 
 Мысленно:
 
-* `enterAt` — список промежутков по высоте viewport (0 — верх, 1 — низ, можно выходить за пределы);
-* `leaveAt` — аналогично, но для выхода;
-* пока элемент между `enterAt` → `visible = true` → `Spring` переключает фазу `default → active`;
-* когда вышел из `leaveAt` → `visible = false` → `Spring` возвращается в `default` (или что вы настроили через `setPhase`/`coverThreshold`).
+- `enterAt` — список промежутков по высоте viewport (0 — верх, 1 — низ, можно выходить за пределы);
+- `leaveAt` — аналогично, но для выхода;
+- пока элемент между `enterAt` → `visible = true` → `Spring` переключает фазу `default → active`;
+- когда вышел из `leaveAt` → `visible = false` → `Spring` возвращается в `default` (или что вы настроили через `setPhase`/`coverThreshold`).
 
 ---
 
@@ -366,24 +358,22 @@ function FeaturesGrid({ items }: { items: { title: string; text: string }[] }) {
     debug: true,
   }}
 >
-  <div className="DebugDemoBlock">
-    Я анимируюсь между линиями debug
-  </div>
+  <div className="DebugDemoBlock">Я анимируюсь между линиями debug</div>
 </Spring>
 ```
 
 При `debug: true`:
 
-* `useVisibilitySignal` рисует **горизонтальные полоски-маркеры** поверх контента;
-* каждая полоска — это «endpoint» ваших зон `enterAt`/`leaveAt`;
-* координаты считаются относительно окна: `0` — верх viewport, `1` — низ, отрицательные/больше 1 — выше/ниже текущего экрана.
+- `useVisibilitySignal` рисует **горизонтальные полоски-маркеры** поверх контента;
+- каждая полоска — это «endpoint» ваших зон `enterAt`/`leaveAt`;
+- координаты считаются относительно окна: `0` — верх viewport, `1` — низ, отрицательные/больше 1 — выше/ниже текущего экрана.
 
 Профит:
 
-* открываешь страницу на десктопе / планшете / телефоне;
-* видишь, **где именно** начинается зона входа/выхода;
-* быстро регулируешь числа, вместо игры «на глаз»;
-* можно включать только в dev-режиме.
+- открываешь страницу на десктопе / планшете / телефоне;
+- видишь, **где именно** начинается зона входа/выхода;
+- быстро регулируешь числа, вместо игры «на глаз»;
+- можно включать только в dev-режиме.
 
 ---
 
@@ -403,53 +393,36 @@ useWatch(() => {
 });
 ```
 
-* `vis.overlap.v` говорит, насколько элемент перекрыт другим (0–1);
-* `coverThreshold` (по умолчанию ~0.35) — порог, после которого элемент считается «накрытым»;
-* `Spring` может автоматически переключать фазу `active → default`, если элемент перекрыт достаточно сильно (например, в стопке карточек).
+- `vis.overlap.v` говорит, насколько элемент перекрыт другим (0–1);
+- `coverThreshold` (по умолчанию ~0.35) — порог, после которого элемент считается «накрытым»;
+- `Spring` может автоматически переключать фазу `active → default`, если элемент перекрыт достаточно сильно (например, в стопке карточек).
 
 ---
 
 ## 8. Движение за мышью: `isMove` и `moveShadow`
 
-Если нужно сделать «tilt-эффект» карточки:
+Все «tilt-эффекты» и живая подсветка карточек держатся на двух вещах:
 
-```tsx
-<Spring
-  className="TiltCard"
-  classInner="TiltCardInner"
-  isMove
-  moveShadow
-  spring={{
-    depth: {
-      values: { default: 10, active: 20 },
-    },
-  }}
->
-  <div className="TiltCardContent">
-    Кручу-верчу, карточку наклоняю
-  </div>
-</Spring>
-```
+* внутренняя логика `Spring` (`isMove`, `rotateX`, `rotateY`, `moveShadow`);
+* простые стили с CSS-переменными `--mouse-x` / `--mouse-y`.
 
-* `isMove` включает обработку `mousemove`/`mouseleave`;
-* `Spring` считает, где находится курсор внутри блока, и обновляет сигналы `rotateX`/`rotateY`;
-* `moveShadow` дополнительно пишет координаты в CSS-переменные `--mouse-x` / `--mouse-y` на внутренний элемент (`classInner`), чтобы можно было рисовать динамическую подсветку чистым CSS;
-* на тач-устройствах всё это отключается (`(hover: hover)`).
+Идея простая: `Spring` не ререндерит React-дерево на каждый кадр — он **только один раз монтирует компонент**, а дальше на `mousemove`:
+
+* обновляет сигналы `st.rotateX` / `st.rotateY` (наклон карточки);
+* если включён `moveShadow`, пишет координаты указателя в CSS-переменные `--mouse-x` и `--mouse-y`.
+
+Дальше всё делает чистый CSS: наклон — через `transform`, подсветка — через `translate(var(--mouse-x), var(--mouse-y))` у псевдоэлементов.
 
 ---
 
-здесь фокус простой: `Spring` превращает обычную карточку в живой 3D-объект, который и наклоняется за курсором, и таскает за собой мягкое световое пятно внутри. Снаружи ты просто пишешь `isMove moveShadow` и немного настроек для `perspective`, `rotateX` и `rotateY`, а всё остальное делает сам компонент.
-
-Когда мышь движется по карточке, `Spring` берёт её `getBoundingClientRect()`, вычисляет смещение курсора от центра (dx, dy в диапазоне примерно от -1 до 1). Визуально это выглядит так, будто карточка чуть наклоняется в сторону точки, где сейчас курсор — как физический объект, лежащий на столе.
-
-Параллельно, если передан флаг `moveShadow`, `Spring` на каждом движении мыши пишет координаты курсора относительно карточки в CSS-переменные `--mouse-x` и `--mouse-y`. В стилях самой карточки псевдоэлементы `before` и `after` позиционируются через `translate-x-[var(--mouse-x)]` и `translate-y-[var(--mouse-y)]`. В результате размазанный круглый градиент (подсветка) не просто присутствует — он реально едет за курсором внутри карточки, создавая эффект живой внутренней тени/свечения, которое всегда «под мышью». Все эти движения пружинятся через `stiffness` и `damping`: наклон и подсветка не дёргаются, а плавно догоняют руку пользователя.
+### JSX: `Spring` вокруг карточки
 
 ```tsx
+import '@/app/css/workflows.css';
 import Image from 'next/image';
 import WorflowImg01 from '@/public/images/workflow-01.png';
 import WorflowImg02 from '@/public/images/workflow-02.png';
 import WorflowImg03 from '@/public/images/workflow-03.png';
-
 import { Spring } from '@/utils/stm/react/animation/Spring';
 import { animSubLabel, animText } from '@/app/animations';
 
@@ -476,64 +449,48 @@ const cards = [
 
 export default function Workflows() {
   return (
-    <section>
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="pb-12 md:pb-20">
-          {/* Section header */}
-          <div className="mx-auto max-w-3xl pb-12 text-center md:pb-20">
-            <div className="inline-flex items-center gap-3 pb-3 before:h-px before:w-8 before:bg-linear-to-r before:from-transparent before:to-indigo-200/50 after:h-px after:w-8 after:bg-linear-to-l after:from-transparent after:to-indigo-200/50">
+    <section id="Workflows">
+      <div className="wf-container">
+        <div className="wf-block">
+          {/* Заголовок секции */}
+          <div className="wf-header">
+            <div className="wf-sublabel">
               <Spring visibility={{ enterAt: [[0, 1]] }} {...animSubLabel}>
-                <span className="inline-flex bg-linear-to-r from-indigo-500 to-indigo-200 bg-clip-text text-transparent">
-                  Tailored Workflows
-                </span>
+                <span className="wf-gradientText">Tailored Workflows</span>
               </Spring>
             </div>
+
             <Spring {...animText} visibility={{ enterAt: [[0, 1]] }}>
-              <h2 className="animate-[gradient_6s_linear_infinite] bg-[linear-gradient(to_right,var(--color-gray-200),var(--color-indigo-200),var(--color-gray-50),var(--color-indigo-300),var(--color-gray-200))] bg-[length:200%_auto] bg-clip-text pb-4 font-nacelle text-3xl font-semibold text-transparent md:text-4xl">
-                Map your product journey
-              </h2>
+              <h2 className="wf-title">Map your product journey</h2>
             </Spring>
+
             <Spring {...animText} visibility={{ enterAt: [[0, 1]], delay: 500 }}>
-              <p className="text-lg text-indigo-200/65">
-                Simple and elegant interface to start collaborating with your team in minutes. It seamlessly integrates
-                with your code and your favorite programming languages.
+              <p className="wf-desc">
+                Simple and elegant interface to start collaborating with your team in minutes. It seamlessly
+                integrates with your code and your favorite programming languages.
               </p>
             </Spring>
           </div>
 
-          {/* Spotlight items */}
-          <div className="group mx-auto grid max-w-sm items-start gap-6 lg:max-w-none lg:grid-cols-3">
+          {/* Карточки с tilt + подсветкой */}
+          <div className="wf-grid wf-group">
             {cards.map((card, i) => (
               <Spring
                 key={i}
                 isMove
                 moveShadow
                 triggers={['down']}
-                classInner="group mx-auto grid max-w-sm items-start gap-6 lg:max-w-none"
+                classInner="wf-gridInner"
                 spring={{
                   perspective: { values: { default: 700 } },
                   rotateX: { stiffness: 120, damping: 30 },
                   rotateY: { stiffness: 120, damping: 30 },
                 }}
               >
-                <a
-                  key={i}
-                  href="#0"
-                  className="group/card relative h-full overflow-hidden rounded-2xl bg-gray-800 p-px
-                before:pointer-events-none before:absolute before:-left-40 before:-top-40 before:z-10 before:h-80 before:w-80 
-                before:translate-x-[var(--mouse-x)] before:translate-y-[var(--mouse-y)] before:rounded-full 
-                before:bg-indigo-500/80 before:opacity-0 before:blur-3xl before:transition-opacity before:duration-500
-                after:pointer-events-none after:absolute after:-left-48 after:-top-48 after:z-30 after:h-64 after:w-64 
-                after:translate-x-[var(--mouse-x)] after:translate-y-[var(--mouse-y)] after:rounded-full 
-                after:bg-indigo-500 after:opacity-0 after:blur-3xl after:transition-opacity after:duration-500 
-                hover:after:opacity-20 group-hover:before:opacity-100"
-                >
-                  <div className="relative z-20 h-full overflow-hidden rounded-[inherit] bg-gray-950 after:absolute after:inset-0 after:bg-linear-to-br after:from-gray-900/50 after:via-gray-800/25 after:to-gray-900/50">
-                    {/* Arrow */}
-                    <div
-                      className="absolute right-6 top-6 flex h-8 w-8 items-center justify-center rounded-full border border-gray-700/50 bg-gray-800/65 text-gray-200 opacity-0 transition-opacity group-hover/card:opacity-100"
-                      aria-hidden="true"
-                    >
+                <a href="#0" className="wf-card">
+                  <div className="wf-cardInner">
+                    {/* Стрелка в углу */}
+                    <div className="wf-cardArrow" aria-hidden="true">
                       <svg xmlns="http://www.w3.org/2000/svg" width={9} height={8} fill="none">
                         <path
                           fill="#F4F4F5"
@@ -542,25 +499,23 @@ export default function Workflows() {
                       </svg>
                     </div>
 
-                    {/* Image */}
-                    <Image className="inline-flex" src={card.img} width={350} height={288} alt={card.alt} />
+                    {/* Картинка */}
+                    <Image
+                      className="wf-img"
+                      src={card.img}
+                      width={350}
+                      height={288}
+                      alt={card.alt}
+                    />
 
-                    {/* Content */}
-                    <div className="p-6">
-                      <div className="mb-3">
-                        <span
-                          className="btn-sm relative rounded-full bg-gray-800/40 px-2.5 py-0.5 text-xs font-normal
-                      before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:border before:border-transparent
-                      before:[background:linear-gradient(to_bottom,--theme(--color-gray-700/.15),--theme(--color-gray-700/.5))_border-box]
-                      before:[mask-composite:exclude_!important] before:[mask:linear-gradient(white_0_0)_padding-box,_linear-gradient(white_0_0)]
-                      hover:bg-gray-800/60"
-                        >
-                          <span className="bg-linear-to-r from-indigo-500 to-indigo-200 bg-clip-text text-transparent">
-                            {card.label}
-                          </span>
+                    {/* Контент */}
+                    <div className="wf-cardContent">
+                      <div className="wf-cardBadgeWrap">
+                        <span className="wf-badge">
+                          <span className="wf-gradientText">{card.label}</span>
                         </span>
                       </div>
-                      <p className="text-indigo-200/65">{card.text}</p>
+                      <p className="wf-cardText">{card.text}</p>
                     </div>
                   </div>
                 </a>
@@ -574,21 +529,97 @@ export default function Workflows() {
 }
 ```
 
+* `isMove` включает обработку `mousemove` / `mouseleave`: `Spring` подписывается на движение мыши над обёрткой.
+* `moveShadow` говорит: «помимо наклона, ещё и прокидывай координаты в CSS-переменные».
+* `spring.rotateX` / `spring.rotateY` задают пружинящие параметры вращения: `stiffness`/`damping` управляют тем, насколько быстро и плавно карточка догоняет мышь.
+* `perspective` задаёт глубину 3D-сцены — видим, как хорошо ощущается наклон.
+
+---
+
+### CSS: внутренняя подсветка, которая ездит за мышью
+
+```css
+.wf-card {
+  position: relative;
+  display: block;
+  height: 100%;                /* h-full */
+  overflow: hidden;
+  border-radius: 1rem;         /* rounded-2xl */
+  background-color: #1f2937;   /* bg-gray-800 */
+  padding: 1px;                /* p-px */
+  text-decoration: none;
+}
+
+.wf-card::before,
+.wf-card::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  border-radius: 9999px;       /* rounded-full */
+  opacity: 0;
+  filter: blur(64px);          /* blur-3xl */
+  transition: opacity 500ms;   /* transition-opacity duration-500 */
+  transform: translate(var(--mouse-x), var(--mouse-y));
+}
+
+.wf-card::before {
+  left: -10rem;                /* -left-40 */
+  top: -10rem;                 /* -top-40 */
+  z-index: 10;
+  width: 20rem;                /* w-80 */
+  height: 20rem;               /* h-80 */
+  background-color: rgba(99, 102, 241, 0.8); /* indigo-500/80 */
+}
+
+.wf-card::after {
+  left: -12rem;                /* -left-48 */
+  top: -12rem;                 /* -top-48 */
+  z-index: 30;
+  width: 16rem;                /* w-64 */
+  height: 16rem;               /* h-64 */
+  background-color: #6366f1;   /* indigo-500 */
+}
+```
+
+Внутри самого `Spring` при включённом `isMove` на каждый `mousemove` выполняется примерно такая логика (упрощённо):
+
+* берём `el.getBoundingClientRect()` для внешней обёртки;
+* считаем `dx` и `dy` — смещение курсора от центра карточки в диапазоне примерно `[-1, 1]`;
+* из этих `dx`/`dy` считаем углы `rotateX` и `rotateY` (например, ±12°) и записываем в сигналы `st.rotateX.v` / `st.rotateY.v`;
+* если `moveShadow === true`, считаем координаты курсора внутри карточки и пишем их в CSS-переменные `--mouse-x` и `--mouse-y`.
+
+
+А CSS-переменные `--mouse-x` / `--mouse-y` уже используются псевдоэлементами `.wf-card::before` / `.wf-card::after`:
+
+```css
+.wf-card::before,
+.wf-card::after {
+  transform: translate(var(--mouse-x), var(--mouse-y));
+}
+```
+
+В итоге картинка выглядит так:
+
+* сама карточка живёт в 3D-пространстве: слегка наклоняется за мышью за счёт `rotateX` / `rotateY` и `perspective`;
+* внутри неё плавает мягкое световое пятно (два размазанных круга `before` / `after`), которое **строго следует за курсором** по `--mouse-x` / `--mouse-y`;
+* все движения сглажены пружинами (`stiffness` / `damping`), поэтому наклон и подсветка не дёргаются, а плавно догоняют руку.
+
+React при этом вообще не страдает: `Spring` не делает «setState на каждый кадр», не рендерит JSX в цикле — он один раз монтирует дерево и дальше работает через сигналы и `style`, как аккуратный маленький движок анимаций.
 
 ## 9. Ментальная модель Spring
 
 Если всё упростить:
 
-* внутри каждый `Spring` держит набор сигналов `st.*` (target-значения);
-* поверх них — пружинные сигналы (через `useSpringSignal`), которые плавно догоняют цель;
-* фазы (`default`, `active`, `enter`, `leave`, `down`, `up`) и внешние сигналы (`isActive`, `phase`, `visibility`) только меняют `st.*`;
-* а `useWatch` переносит их в `style` (`transform`, `opacity`, `boxShadow`, `perspective` и т.д.).
+- внутри каждый `Spring` держит набор сигналов `st.*` (target-значения);
+- поверх них — пружинные сигналы (через `useSpringSignal`), которые плавно догоняют цель;
+- фазы (`default`, `active`, `enter`, `leave`, `down`, `up`) и внешние сигналы (`isActive`, `phase`, `visibility`) только меняют `st.*`;
+- а `useWatch` переносит их в `style` (`transform`, `opacity`, `boxShadow`, `perspective` и т.д.).
 
 Ты же снаружи работаешь простыми вещами:
 
-* конфигом `spring` с фазами;
-* `visibility` (плюс `debug`, если нужно «линейкой» померить зоны);
-* `triggers` и/или `isActive`;
-* обычной разметкой с классами.
+- конфигом `spring` с фазами;
+- `visibility` (плюс `debug`, если нужно «линейкой» померить зоны);
+- `triggers` и/или `isActive`;
+- обычной разметкой с классами.
 
 В итоге `<Spring>` превращает сигналы и события в аккуратные «пружины интерфейса», не заставляя вручную писать тонну `useEffect`, подписок и анимаций.
