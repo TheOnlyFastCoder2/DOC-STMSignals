@@ -2,7 +2,7 @@
 
 Все анимации в этом шаблоне (включая скролл-анимации, hover-эффекты, 3D-наклон карточек и мягкие появляющиеся блоки) построены вокруг одного компонента — [`<Spring>`](#spring).
 
-Это ссылка на сайт с примерами: https://open-react-template-4pyf.vercel.app/
+Это ссылка на сайт с примерами: https://open-react-template-4pyf.vercel.app/    
 Git репозиторий сайта: https://github.com/TheOnlyFastCoder2/open-react-template
 
 Ключевая идея: **React-дерево остаётся максимально стабильным**.
