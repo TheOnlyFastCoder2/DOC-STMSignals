@@ -28,3 +28,16 @@
   --ifm-color-primary-lightest: #4fddbf;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
+
+.hero__subtitle {
+  width: min(100%, 600px);
+  margin: auto;
+  margin-bottom: 30px;
+}
+
+.hero__subtitle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}

@@ -1,79 +1,130 @@
-# SSR + сигналы: один запрос на весь проект
+---
+sidebar_position: 2
+---
 
-Вся фишка в том, что **проекты грузятся один раз на сервере**, кладутся в `ssrSignal`, а дальше ты просто читаешь `sgProjects.v` в любом месте приложения — и на сервере, и на клиенте.
+# SSR + сигналы: одна история на сервере и продолжение на клиенте
+
+Есть два типа приложений.
+
+В первом ты заходишь на страницу — и чувствуешь, как оно живёт: список уже на месте, всё быстро, никаких “загрузка…”, никаких лишних запросов, никаких странных миграций состояния.
+
+Во втором ты заходишь — и начинается сериал: сначала запрос, потом ещё один, потом “ой, мы потеряли кэш”, потом “а почему это грузится дважды”, потом “а где хранить данные, чтобы и SSR, и клиент были довольны”.
+
+SSR в Reactive Core — это способ всегда быть в первом типе. Не потому что “мы так решили”, а потому что тут есть очень простая, почти литературная сцена:
+
+**сервер добывает данные → кладёт их в `ssrSignal` → рендерит HTML → в `<script>` зашивает состояние → браузер читает его первым делом → клиент продолжает с того же места, где закончился сервер.**
+
+Без обрывов сюжета.
 
 ---
 
-### 1. Глобальный SSR-сигнал с проектами
+## `ssrSignal` — сигнал, который умеет “переезжать”
+
+Обычный `signal` живёт там, где ты его создал. `ssrSignal` живёт в двух мирах одновременно:
+
+* на сервере он ведёт себя как нормальный сигнал, только **плюс** записывает своё значение в SSR-стор;
+* на клиенте он первым делом заглядывает в `window.__SSR_STATE__`, забирает своё значение **и удаляет ключ**, чтобы стор не превращался в мусорный склад.
+
+Тебе нужно всего одно: **стабильный id**. Это как название главы в книге: по нему клиент понимает, что именно продолжать.
 
 ```ts
-// api/projects/index.ts
-export const sgProjects = ssrSignal<Project[]>([], '/projects');
-````
+// api/projects/store.ts
+import { ssrSignal } from '../index';
 
-Это:
-
-* глобальное хранилище `Project[]`;
-* с фиксированным id `'/projects'`, по которому значение будет:
-
-  * записано на сервере в `__SSR_STATE__`,
-  * восстановлено на клиенте из `window.__SSR_STATE__`.
-
----
-
-### 2. Loader наполняет сигнал на сервере
-
-```ts
-// root.tsx
-export async function loader(_args: Route.LoaderArgs) {
-  await project.list();
-  await employees.get();
+export interface Project {
+  id: string;
+  title: string;
+  // ...
 }
 
-// api/projects/index.ts
-export const project = {
-  list: async (opts?) => {
-    const results = await directus.request<Project[]>(
-      readItems('projects', { /* ... */ })
-    );
+export const sgProjects = ssrSignal<Project[]>([], '/projects');
+```
 
-    const withNext = addNextItem(results as any);
-    sgProjects.v = withNext;       // ← кладём в сигнал
-    return withNext;
+`'/projects'` — это тот самый “якорь сюжета”. Где бы ты ни читал `sgProjects.v`, источник один.
+
+---
+
+## Наполняем сигнал на сервере: “один запрос — одна правда”
+
+Теперь важный момент, который обычно ломает людям SSR: **кто-то должен успеть наполнить данные до того, как сервер начнёт рендерить HTML.** И этим кем-то должен быть loader.
+
+Сделаем API-слой, который не просто возвращает результат, а кладёт его в сигнал. Потому что сигнал — это не “сервисная переменная”. Это реальный единый источник правды, к которому потом будут обращаться и список, и детали, и любые другие страницы.
+
+```ts
+// api/projects/index.ts
+import { sgProjects, type Project } from './store';
+
+// псевдо-API — подставь свой directus/fetch/whatever
+async function fetchProjects(): Promise<Project[]> {
+  const res = await fetch('https://example.com/api/projects');
+  return res.json();
+}
+
+async function fetchProject(id: string): Promise<Project> {
+  const res = await fetch(`https://example.com/api/projects/${id}`);
+  return res.json();
+}
+
+export const project = {
+  list: async () => {
+    const result = await fetchProjects();
+    sgProjects.v = result;              // ← кладём в сигнал
+    return result;
   },
 
   get: async (id: string) => {
     const cached = sgProjects.v.find((p) => p.id === id);
-    if (cached) return cached;
+    if (cached) return cached;          // ← сперва кэш (сигнал)
 
-    const project = await directus.request<Project>(
-      readItem('projects', id, { /* ... */ })
-    );
-
-    sgProjects.v = addNextItem([...sgProjects.v, project]);
-    return project;
+    const one = await fetchProject(id); // ← если нет — догружаем
+    sgProjects.v = [...sgProjects.v, one];
+    return one;
   },
 };
 ```
 
-`loader` просто вызывает `project.list()`, а та:
-
-* делает один запрос в Directus;
-* кладёт результат в `sgProjects.v`.
-
-Роутер получает данные, а ты — уже заполненный сигнал.
+Обрати внимание на тонкость: `get()` не “делает запрос по умолчанию”. Он сначала смотрит в сигнал. Это маленькая дисциплина, которая потом экономит десятки запросов.
 
 ---
 
-### 3. Прокидка состояния в HTML
+## Loader: сервер наполняет сигнал до рендера
+
+Теперь тот самый момент, где сюжет разворачивается правильно. На SSR ты делаешь вызов, который гарантированно наполнит сигнал. После этого сервер может рендерить компоненты — и они уже увидят данные, будто они всегда там были.
+
+```ts
+// root.tsx / server loader
+import { project } from 'api/projects';
+
+export async function loader() {
+  await project.list(); // ← на SSR заполняем sgProjects
+  return null;
+}
+```
+
+Вот и всё. Не нужно ничего возвращать, не нужно протаскивать в пропсы, не нужно собирать мега-объект “hydration data”. Данные уже в сигнале.
+
+---
+
+## `getSSRStore()` — “готовый скрипт с данными”, который вставляется в HTML
+
+Теперь серверу нужно сделать одну вещь: объяснить клиенту, с какими данными он должен стартовать.
+
+`getSSRStore()` — это не “объект”. Это уже **готовый кусок JavaScript**, который делает одну простую вещь: записывает все `ssrSignal` в `window.__SSR_STATE__`.
+
+Ты вставляешь его в `<script>` на SSR-странице (обычно в `<head>`), браузер выполняет его до гидрации — и тогда `ssrSignal` на клиенте сразу подхватывает своё значение.
+
+Пример (Router/Remix style layout):
 
 ```tsx
 // root.tsx
+import { getSSRStore } from '../index';
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
-        {/* ... */}
+        {/* meta, links, styles... */}
+
         <script
           dangerouslySetInnerHTML={{
             __html: getSSRStore(),
@@ -82,36 +133,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
-        <Scripts />
+        {/* scripts */}
       </body>
     </html>
   );
 }
 ```
 
-`getSSRStore()` сериализует все `ssrSignal` (в том числе `/projects`) в:
+Как это ощущается на практике:
 
-```js
-window['__SSR_STATE__'] = {
-  "/projects": [ /* список проектов */ ],
-  // ...
-};
-```
+* сервер заполнил `sgProjects.v`;
+* сервер отрендерил HTML;
+* `getSSRStore()` добавил “письмо в будущее” в виде `<script>`;
+* браузер открыл письмо — и положил данные в `window.__SSR_STATE__`;
+* клиентские `ssrSignal` прочитали их и продолжили как ни в чём не бывало.
 
-На клиенте `ssrSignal('/projects')` увидит это и сразу подхватит значение в `sgProjects.v`.
+Если тебе нужно не “готовый скрипт”, а просто JSON (например, ты хочешь сам решать, куда класть данные), есть `getJsonSSRStore()`.
 
 ---
 
-### 4. Как этим пользоваться в компонентах
+## Компоненты: читать можно просто `.v`, а можно реактивно
 
-Самое приятное: в большинстве случаев тебе вообще не нужен отдельный хук —
-**достаточно просто прочитать `sgProjects.v`**:
+Вот приятное отличие от большинства схем: ты не обязан использовать специальный хук, чтобы “получить SSR-данные”. Если сигнал уже наполнен, ты можешь читать `.v` напрямую.
+
+Это особенно кайфово, когда компонент рендерится на сервере: там нет “подписки”, там просто чтение данных и рендер HTML.
 
 ```tsx
-import { sgProjects } from 'api/projects';
+import { sgProjects } from 'api/projects/store';
 
-function ProjectsList() {
-  const projects = sgProjects.v; // уже готовый список
+export function ProjectsList() {
+  const projects = sgProjects.v;
 
   return (
     <ul>
@@ -123,90 +174,60 @@ function ProjectsList() {
 }
 ```
 
-Работает так:
+Но если ты хочешь, чтобы **на клиенте** React перерендеривался при изменениях сигнала (например, ты добавляешь проекты после загрузки) — тогда ты подключаешь мостик `useSignalValue`.
 
-* на сервере `projects.v` уже заполнен в `loader`;
-* сервер рендерит список;
-* на клиенте `ssrSignal` поднимает то же значение из `window.__SSR_STATE__`;
-* `sgProjects.v` сразу доступен, без доп. запросов и без проп-дриллинга.
+```tsx
+import { sgProjects } from 'api/projects/store';
+import { useSignalValue, isErrorSnapshot, renderValue } from 'shared/utils/_stm/react/react';
 
-Если нужен **реактивный** ререндер при обновлении `sgProjects`, можно поверх этого использовать `useSignalValue(sgProjects)`, но базовый кейс — «один запрос, `sgProjects.v` везде» — уже работает.
+export function ProjectsList() {
+  const projects = useSignalValue(sgProjects);
+
+  return (
+    <ul>
+      {projects.map((p) => (
+        <li key={p.id}>{p.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+В этом месте сюжет становится очень спокойным: SSR дал старт, React подписался “правильным способом”, и дальше всё просто работает.
 
 ---
 
+## Детальная страница: один кэш на весь проект, без повторных запросов
 
-### 5. Детальная страница проекта: тот же кэш, тот же сигнал
+Самая вкусная сцена — когда у тебя есть список и **страница проекта**.
 
-Отдельный роут под страницу проекта выглядит так:
+Ты кликаешь из списка в страницу проекта. В большинстве архитектур эта страница снова делает запрос, потому что “так проще”. Здесь проще иначе: страница проекта вызывает `project.get(id)`, а `get()` первым делом ищет проект в `sgProjects`. И если он там — запроса не будет: данные уже лежат в общем сигнале.
 
-```tsx
-export async function clientLoader({ params }: Route.LoaderArgs) {
-  const result = await project.get(params.slug);
-  if (!result) {
-    throw new Response('Not found', { status: 404 });
-  }
-  return result;
+```ts
+// route loader
+import { project } from 'api/projects';
+
+export async function loader({ params }: { params: { id: string } }) {
+  const data = await project.get(params.id); // сначала смотрит в sgProjects
+  if (!data) throw new Response('Not found', { status: 404 });
+  return data;
 }
-
-export default function Project({ loaderData: data }: Route.ComponentProps) {
-  return (
-    <StartPage>
-      <div className={$.Project}>
-        <div className={$.container}>
-          {data.blocks.map((block, ind) => (
-            <Switcher key={ind} {...{ block }} nextProject={data.nextItem} />
-          ))}
-        </div>
-      </div>
-    </StartPage>
-  );
-}
-````
-
-Главное здесь — то, **что именно дергает `clientLoader`**:
-
-```ts
-const result = await project.get(params.slug);
 ```
 
-А `project.get` уже умеет работать с `sgProjects`:
+И получается ровно то, что хочется:
 
-```ts
-get: async (id: string) => {
-  const cached = sgProjects.v.find((p) => p.id === id);
-  if (cached) return cached;                     // ← сначала ищем в сигнале
+* если ты пришёл на страницу проекта **со страницы списка**, список уже наполнил сигнал → `get()` просто нашёл проект в памяти;
+* если ты открыл страницу проекта напрямую, `get()` сделает ровно один запрос и добавит результат в общий сигнал;
+* после этого и список, и страница проекта смотрят в одно и то же место — `sgProjects`.
 
-  const project = await directus.request<Project>(readItem('projects', id, { ... }));
-  sgProjects.v = addNextItem([...sgProjects.v, project]); // ← докидываем в общий список
-  return project;
-},
-```
+---
 
-Что это даёт в сумме:
+## Финальная картинка (и почему это ощущается “как надо”)
 
-* Если ты пришёл на детальную страницу **из списка**:
+Ты не строишь “SSR-архитектуру”. Ты просто используешь сигналы по-человечески:
 
-  * `sgProjects.v` уже заполнен (`project.list()` вызывался в корневом `loader`);
-  * `project.get(slug)` просто находит нужный проект в сигнале и **не делает новый запрос**.
-* Если ты открыл детальную страницу «напрямую»:
-
-  * `project.get(slug)` один раз делает запрос в API;
-  * кладёт результат в `sgProjects.v`;
-  * компонент получает `loaderData` и спокойно рендерит страницу;
-  * при этом общий сигнал-кэш тоже обновлён.
-
-И самое приятное: и список, и отдельная страница, и любые другие места в приложении смотрят в **один и тот же сигнал**:
-
-```ts
-import { sgProjects } from 'api/projects';
-
-const projects = sgProjects.v; // тот же источник правды в любом месте проекта
-```
-
-SSR поднимает начальные данные, `ssrSignal` переносит их на клиент,
-а `project.list` / `project.get` просто пополняют **одну общую реактивную коллекцию**.
-В итоге ты:
-
-* делаешь минимум запросов;
-* не таскаешь данные пропсами и контекстами;
-* в любой точке проекта можешь взять список или конкретный проект через `sgProjects.v` и быть уверен, что это актуальное состояние.
+* **данные живут в `ssrSignal`** и доступны где угодно;
+* **loader наполняет сигнал на сервере** до рендера;
+* **`getSSRStore()` вставляется в `<head>`** и делает мостик на клиент;
+* **клиент продолжает**, не делая повторных запросов;
+* **вся логика кэша** — это честное чтение/запись одного сигнала.

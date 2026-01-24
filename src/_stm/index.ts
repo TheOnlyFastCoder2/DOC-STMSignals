@@ -14,13 +14,79 @@ if (typeof globalThis.cancelAnimationFrame === 'undefined') {
   (globalThis as any).cancelAnimationFrame = (id: any) => clearTimeout(id);
 }
 
+/* ================= Visibility + HMR guards =================== */
+
+// 1) HMR: “поколение” планировщика. Старые runFrame перестают жить.
+const __STM_SCHED_GEN_KEY__ = '__stm_sched_gen_v635__';
+const __stmGen = ((globalThis as any)[__STM_SCHED_GEN_KEY__] =
+  ((globalThis as any)[__STM_SCHED_GEN_KEY__] ?? 0) + 1);
+
+const isStaleScheduler = () => (globalThis as any)[__STM_SCHED_GEN_KEY__] !== __stmGen;
+
+// 2) Visibility: не гоняем RAF, когда вкладка скрыта
+let isDocVisible = typeof document === 'undefined' ? true : document.visibilityState === 'visible';
+
+// 3) Один visibility handler на всё приложение (чтобы не плодился в HMR)
+const __STM_VIS_HANDLER_KEY__ = '__stm_vis_handler_v635__';
+
+function stopRAF() {
+  if (rafId != null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+}
+
+function maybeStartRAF() {
+  if (!isDocVisible) return;
+  if (schedulerMode !== 'frame') return;
+  if (rafId != null) return;
+  if (isStaleScheduler()) return;
+
+  if (queues.high.size || queues.normal.size || queues.low.size) {
+    rafId = requestAnimationFrame(runFrame);
+  }
+}
+
+if (typeof document !== 'undefined') {
+  const g = globalThis as any;
+
+  // снимаем старые (после hot reload)
+  if (g[__STM_VIS_HANDLER_KEY__]) {
+    document.removeEventListener('visibilitychange', g[__STM_VIS_HANDLER_KEY__]);
+    window.removeEventListener('pagehide', g[__STM_VIS_HANDLER_KEY__]);
+  }
+
+  g[__STM_VIS_HANDLER_KEY__] = () => {
+    isDocVisible = document.visibilityState === 'visible';
+
+    if (!isDocVisible) {
+      stopRAF();
+      return;
+    }
+    // вернулись на вкладку
+    maybeStartRAF();
+  };
+
+  document.addEventListener('visibilitychange', g[__STM_VIS_HANDLER_KEY__], {
+    passive: true,
+  } as any);
+  // полезно для bfcache / ухода со страницы
+  window.addEventListener('pagehide', g[__STM_VIS_HANDLER_KEY__], { passive: true } as any);
+}
+
 /* ======================== Types ====================== */
 
 type Priority = 'high' | 'normal' | 'low';
 type Phase = 'update' | 'commit' | 'idle';
 export type ErrorWhere = 'effect' | 'computed';
+export type ErrorSnapshot = { __stmError: unknown };
 
 /* ================= Safe onError hook ================= */
+
+// важно: при одинаковой ошибке возвращаем один и тот же объект (иначе лишние ререндеры)
+const _errCache = new WeakMap<object, { err: unknown; snap: ErrorSnapshot }>();
+const STM_ERROR_ORIGIN = Symbol('stm.error.origin');
+
 let onErrorHook: ((e: unknown, where: ErrorWhere) => void) | null = null;
 export function onError(fn: (e: unknown, where: ErrorWhere) => void) {
   onErrorHook = fn;
@@ -162,6 +228,9 @@ function scheduleEffect(eff: Effect) {
 
 function scheduleRAF() {
   if (rafId != null) return;
+  if (schedulerMode !== 'frame') return;
+  if (!isDocVisible) return;
+  if (isStaleScheduler()) return;
   rafId = requestAnimationFrame(runFrame);
 }
 
@@ -374,19 +443,30 @@ export class Signal<T = any> {
     this.cmp = equals;
   }
 
+  private _setValue(next: T): boolean {
+    const equal = this.cmp ? this.cmp(next, this._value) : Object.is(next, this._value);
+    if (equal) return false;
+
+    this._value = next;
+    this._version++;
+    return true;
+  }
+
   get v() {
     const ctx = currentContext;
     if (ctx) linkOnce(this, ctx);
     return this._value;
   }
 
+  get u() {
+    return untracked(() => this.v);
+  }
+  set u(v: T) {
+    this._setValue(v);
+  }
   set v(v: T) {
-    const equal = this.cmp ? this.cmp(v, this._value) : Object.is(v, this._value);
-    if (equal) return;
-    this._value = v;
-    this._version++;
+    if (!this._setValue(v)) return;
 
-    // safe iteration
     let node = this._targets;
     while (node) {
       const next = node.nextTarget; // capture next before callback
@@ -405,39 +485,97 @@ export class Computed<T = any> {
   _value!: T;
   private _computing = false;
   private _hasValue = false;
+
+  // ✅ NEW: error state
+  private _hasError = false;
+  private _error: unknown = null;
+
   fn: () => T;
 
   constructor(fn: () => T) {
     this.fn = fn;
   }
 
+  // ✅ NEW: invalidate targets when state toggles (ok <-> error)
+  private _notifyTargets(skip?: Computed | Effect) {
+    const targets = this._targets;
+    if (!targets) return;
+
+    const outer = !!batchedEffects;
+    if (!outer) batchedEffects = new Set();
+
+    for (let n = targets; n; n = n.nextTarget) {
+      if (n.target !== skip) n.target.markDirty();
+    }
+
+    if (!outer) {
+      const toSchedule = batchedEffects!;
+      batchedEffects = null;
+      scheduleFromBatch(toSchedule, /* requestRaf */ true);
+    }
+  }
+
   get v() {
     if (this._dirty) this.recompute();
-    if (!this._hasValue) throw new Error('Computed accessed before first successful compute');
+
+    // ✅ IMPORTANT: линк ставим ДО throw, иначе зависимость не восстановится
     const ctx = currentContext;
     if (ctx && ctx !== this) linkOnce(this as any, ctx);
+
+    // ✅ propagate error
+    if (this._hasError) throw this._error;
+
+    if (!this._hasValue) throw new Error('Computed accessed before first successful compute');
     return this._value;
   }
 
   recompute() {
     if (this._computing) throw new Error('Computed cycle detected');
+
+    const outerCtx = currentContext;
+    const wasErrored = this._hasError;
+
     unlinkAllSources(this);
+
     const prev = currentContext;
     currentContext = this;
     this._computing = true;
+
     try {
       this._dirty = false;
-      this._value = this.fn();
+
+      const next = this.fn();
+      this._value = next;
       this._hasValue = true;
+
+      this._hasError = false;
+      this._error = null;
     } catch (e) {
-      this._dirty = true; // allow retry later
-      if (!safeOnError(e, 'computed')) throw e;
+      this._dirty = false;
+      this._hasError = true;
+      this._error = e;
+
+      // ✅ логируем только у "первоисточника"
+      let shouldLog = true;
+      if (e && typeof e === 'object') {
+        const obj = e as any;
+        if (obj[STM_ERROR_ORIGIN]) shouldLog = false;
+        else obj[STM_ERROR_ORIGIN] = this;
+      }
+      safeOnError(e, 'computed');
+
+      // ✅ при входе в ошибку — инвалидируем зависимых
+      if (!wasErrored) this._notifyTargets(outerCtx as any);
     } finally {
       this._computing = false;
       currentContext = prev;
     }
-  }
 
+    // ✅ при выходе из ошибки — тоже инвалидируем зависимых
+    if (wasErrored && !this._hasError) {
+      this._notifyTargets(outerCtx as any);
+    }
+  }
   markDirty() {
     if (this._dirty) return;
     this._dirty = true;
@@ -457,9 +595,9 @@ export class Computed<T = any> {
 }
 
 /* ===================== Effect ======================== */
-type EffectOptions = { lazy?: boolean };
-type EffectKind = Priority | 'sync';
-type EffectMode = 'frame' | 'sync';
+export type EffectOptions = { lazy?: boolean };
+export type EffectKind = Priority | 'sync';
+export type EffectMode = 'frame' | 'sync';
 
 export class Effect {
   _sources?: Link;
@@ -507,7 +645,7 @@ export class Effect {
         const cleanup = this.fn();
         if (typeof cleanup === 'function') this.disposeFn = cleanup;
       } catch (e) {
-        this._dirty = true; // allow retry
+        // ✅ НЕ ставим _dirty=true — не ретраим бесконечно
         if (!safeOnError(e, 'effect')) throw e;
       } finally {
         currentContext = prev;
@@ -515,6 +653,8 @@ export class Effect {
     } finally {
       this._running = false;
 
+      // ✅ оставляем: если self-dirty случился во время run (sync-mode edge),
+      // тогда надо перескейджулить
       if (this._dirty && !this.isDisposed) {
         scheduleEffect(this);
       }
@@ -647,5 +787,19 @@ export function setPriority(eff: Effect, p: Priority) {
   eff.priority = p;
   if (eff._dirty && eff.mode === 'frame') {
     scheduleEffect(eff);
+  }
+}
+
+export function safeSnapshot<T>(sig: Signal<T> | Computed<T>): T | ErrorSnapshot {
+  try {
+    const v = sig.v;
+    _errCache.delete(sig as any);
+    return v;
+  } catch (e) {
+    const cached = _errCache.get(sig as any);
+    if (cached && cached.err === e) return cached.snap;
+    const snap = { __stmError: e };
+    _errCache.set(sig as any, { err: e, snap });
+    return snap;
   }
 }

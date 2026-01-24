@@ -1,430 +1,252 @@
-# React-обёртки над ядром
-
-Этот модуль — тонкий мост между реактивным ядром (`Signal`, `Computed`, `Effect`) и React.
-
-Главная идея:
-
-- состояние и вычисления живут в ядре (сигналы);
-- React-компоненты только **подписываются** на них через хуки;
-- у сигналов можно получить готовый JSX-элемент `.c` и рендерить его как обычный React-элемент.
-
+---
+sidebar_position: 1
 ---
 
-## Быстрый обзор хуков
+# Реактивность в React
 
-- `useSignal(initial)` — локальный сигнал внутри компонента (аналог `useState`, но реактивный, с `.v` и `.c`).
-- `useSignalValue(signal)` — подписка на внешний сигнал/компьютед (модель вне React).
-- `useComputed(fn)` — вычисляемое значение внутри компонента.
-- `useWatch(fn, deps?)` — реактивный `Effect`, привязанный к жизненному циклу компонента.
-- `useSignalMap(initial, deps?)` — реактивный список (`SignalMap`) под React.
-- `signalRC(initial)` — создать глобальный сигнал с `.c` без хука (используется вне компонентов).
+## Введение
 
-Дальше — каждый по порядку.
+React-версия — это мостик между вашим **Reactive Core** и **рендером React**, без “магии сторов” и без ручного `setState` на каждое движение. Идея простая: сигналы и computed живут своей жизнью, а React узнаёт об изменениях через `useSyncExternalStore` — то есть так, как React “любит” (и как надо для concurrent).
 
----
-
-## `useSignal(initial)`
-
-### Что это
-
-Локальное состояние-комо-сигнал:
-
-- создаёт `Signal<T>` внутри компонента;
-- даёт доступ к:
-  - `.v` — текущее значение;
-  - `.c` — готовый React-элемент для рендера значения.
-
-По сути — `useState`, но сразу интегрированный с реактивным ядром.
-
-### Сигнатура
-
-```ts
-export function useSignal<T>(initialValue: T): TRSignal<T>;
-````
-
-`TRSignal<T>` — это `Signal<T>` + поле `.c: JSX.Element`.
-
-### Пример
+Главная фишка, ради которой это вообще приятно писать: у каждого Signal/Computed появляется **`.c`** — готовый React-элемент. Его можно просто вставить в JSX, и он сам будет подписываться и перерисовываться.
 
 ```tsx
-import { useSignal } from './react';
-
 function Counter() {
   const count = useSignal(0);
+  const doubled = useComputed(() => count.v * 2);
 
   return (
-    <div>
-      <button onClick={() => (count.v -= 1)}>-</button>
-      <span>{count.c}</span> {/* рендер текущего значения */}
-      <button onClick={() => (count.v += 1)}>+</button>
-    </div>
-  );
-}
-```
-
-Можно использовать как `.v` (обычное значение), так и `.c` (готовый элемент).
-
----
-
-## `useSignalValue(signal)`
-
-### Что это
-
-Хук для **подписки на уже существующий** сигнал или computed, который живёт вне компонента:
-
-* ничего не создаёт, только слушает;
-* возвращает актуальное `sg.v`;
-* при изменении `sg.v` компонент автоматически перерендерится.
-
-### Сигнатура
-
-```ts
-export function useSignalValue<T>(sg: Sig<T>): T;
-// Sig<T> = Signal<T> | Computed<T>
-```
-
-### Пример
-
-```ts
-// model.ts
-import { signal } from '../index';
-
-export const theme = signal<'light' | 'dark'>('light');
-```
-
-```tsx
-// ThemeSwitcher.tsx
-import { useSignalValue } from './react';
-import { theme } from './model';
-
-function ThemeSwitcher() {
-  const current = useSignalValue(theme);
-
-  return (
-    <button onClick={() => (theme.v = current === 'light' ? 'dark' : 'light')}>
-      Theme: {current}
+    <button onClick={() => (count.v += 1)}>
+      count: {count.c} / doubled: {doubled.c}
     </button>
   );
 }
 ```
 
-`theme` может использоваться и вне React (в эффектах ядра, в API-слое и т.д.), а `useSignalValue` просто «подписывает» компонент на его изменения.
+---
+
+## Что такое `.c` и почему это удобно
+
+`.c` — это просто готовый React-элемент, “прикрученный” прямо к сигналу или computed. Внутри он подписывается на изменения через `useSyncExternalStore`, читает значение безопасно через `safeSnapshot` (поэтому если computed упал, React-дерево не падает вместе с ним), и в конце превращает результат в JSX через `renderValue`. В итоге ты можешь читать `.v`, когда нужна логика, а можешь вставлять `.c`, когда нужно отображение — и оно будет обновляться само, без лишних обёрток и `useState`.
 
 ---
 
-## `useComputed(fn)`
+## `renderValue(value)` — как библиотека превращает значение в JSX
 
-### Что это
-
-Создаёт `Computed` внутри компонента:
-
-* `fn` может читать сигналы и другие `Computed`;
-* возвращаемый объект:
-
-  * `.v` — вычисленное значение;
-  * `.c` — готовый React-элемент для рендера.
-
-### Сигнатура
-
-```ts
-export function useComputed<T>(fn: () => T): TRComputed<T>;
-```
-
-`TRComputed<T>` — это `Computed<T>` + `.c`.
-
-### Пример
+`renderValue` — это “последний переводчик” между данными и UI. Если ему прилетает `ErrorSnapshot` вида `{ __stmError: ... }`, он аккуратно рисует сообщение об ошибке. Если прилетает уже готовый React-элемент, он просто отдаёт его как есть. А если это обычное значение (строка, число, boolean и т.д.), он делает из него текст через `String(value)` и рендерит. Это удобно, потому что все сигналы/компьютеды отображаются одинаково и предсказуемо — ты не пишешь бойлерплейт “а вдруг там ошибка?” в каждом компоненте.
 
 ```tsx
-import { useSignal, useComputed } from './react';
+const name = useSignal('Alice');
+return <div>Hello, {name.c}</div>;
+```
 
-function FullName() {
-  const first = useSignal('');
-  const last = useSignal('');
+---
 
-  const fullName = useComputed(() => `${first.v} ${last.v}`.trim());
+## `useSignal(initialValue)` — локальное состояние компонента, но реактивное
+
+`useSignal` создаёт writable `Signal`, живущий ровно столько же, сколько живёт компонент. Плюс сразу добавляет `.c`, чтобы сигнал можно было рендерить напрямую. Это ощущается как обычный локальный state, только вместо `setState` ты пишешь в `sig.v`, а всё остальное (derived, эффекты, зависимости) строится поверх сигнального графа.
+
+```tsx
+function Form() {
+  const query = useSignal('');
 
   return (
     <div>
-      <input value={first.v} onChange={(e) => (first.v = e.target.value)} />
-      <input value={last.v} onChange={(e) => (last.v = e.target.value)} />
-      <p>Full name: {fullName.c}</p>
+      <input value={query.v} onChange={(e) => (query.v = e.target.value)} />
+      <div>typed: {query.c}</div>
     </div>
   );
 }
 ```
 
-`fullName` автоматически пересчитается, когда изменятся `first.v` или `last.v`.
-
 ---
 
-## `useWatch(fn, deps?)`
+## `useSignalValue(sg)` — подписка на существующий сигнал/компьютед
 
-### Что это
-
-Хук для случаев, когда нужно «подключить» **reactive-Effect** к жизненному циклу React-компонента.
-
-Работает как `useEffect`, но внутри создаёт `Effect` из ядра:
-
-* при маунте компонента создаётся `Effect`;
-* при анмаунте — диспоузится;
-* если в `fn` читаются сигналы — он становится реактивным (перезапускается при изменении этих сигналов).
-
-### Сигнатура
-
-```ts
-export function useWatch(fn: () => void, deps: DependencyList = []): void;
-```
-
-### Пример
+Если сигнал создан где-то снаружи (в модуле, сервисе, контексте), `useSignalValue` даёт “React-подписку” на него и возвращает текущее значение (или `ErrorSnapshot`). Когда ты не владеешь сигналом, но хочешь показывать его в UI — это оно.
 
 ```tsx
-import { useWatch } from './react';
-import { signal } from '../index';
+export const userName = signal('Alice');
 
-const userId = signal('1');
-
-function DebugUser() {
-  useWatch(() => {
-    console.log('userId changed:', userId.v);
-  }, [userId]); // deps отвечают за пересоздание самого Effect
-
-  return null;
+function Header() {
+  const v = useSignalValue(userName);
+  if (isErrorSnapshot(v)) return renderValue(v);
+  return <div>User: {v}</div>;
 }
 ```
 
-* `userId.v` внутри `useWatch` делает `Effect` зависимым от `userId`;
-* при смене `userId.v` эффект сработает снова;
-* при анмаунте компонента `Effect` будет корректно очищен.
+---
+
+## `signalRC(initialValue)` — сигнал с `.c`, но без хука
+
+Иногда сигнал хочется создать вне компонента (как модульный store), но всё равно иметь `.c` для удобного рендера. `signalRC` делает именно это: создаёт Signal и сразу подцепляет к нему реактовскую подписку и `.c`.
+
+```tsx
+export const counter = signalRC(0);
+
+function App() {
+  return <button onClick={() => (counter.v += 1)}>{counter.c}</button>;
+}
+```
 
 ---
 
-## `useSignalMap(initial, deps?)`
+## `useComputed(fn)` — derived-значение, которое рендерится само
 
-### Что это
-
-Хук над `SignalMap<T>` для удобной работы с **реактивными списками** в React:
-
-* создаёт `SignalMap<T>` внутри компонента;
-* превращает каждый элемент в `DeepSignal<T>` + `.c` на листьях;
-* даёт метод `.map(renderFn)`, который сразу возвращает React-элемент, подписанный на список.
-
-### Сигнатура
-
-```ts
-export function useSignalMap<T>(
-  initialValue: readonly T[],
-  deps: DependencyList = []
-): TRMapSignal<T>;
-```
-
-`TRMapSignal<T>` — это `SignalMap<T>` с:
-
-* `.v: ReadonlyArray<ReactDeep<T>>`;
-* `.map((item, index) => JSX)` → `ReactElement`.
-
-### Пример: список задач
+`useComputed` создаёт `Computed`, добавляет ему `.c` и следит, чтобы React обновлялся, когда computed меняется. По ощущениям это “как `useMemo`”, только deps не нужны: зависимости строятся автоматически по чтениям `.v`, а ошибки computed переживаются безопасно через `safeSnapshot`.
 
 ```tsx
-import { useSignalMap } from './react';
+function Price() {
+  const amount = useSignal(2);
+  const price = useSignal(10);
 
-type Todo = { id: number; title: string; done: boolean };
+  const total = useComputed(() => amount.v * price.v);
 
-function TodoList() {
-  const todos = useSignalMap<Todo>([
-    { id: 1, title: 'Learn signals', done: false },
-    { id: 2, title: 'Wire React', done: true },
-  ]);
-
-  return todos.map((item, index) => (
-    <div key={item.id.v}>
-      <label>
-        <input
-          type="checkbox"
-          checked={item.done.v}
-          onChange={() => (item.done.v = !item.done.v)}
-        />
-        {item.title.c}
-      </label>
+  return (
+    <div>
+      total: {total.c}
+      <button onClick={() => (amount.v += 1)}>+1</button>
     </div>
-  ));
+  );
 }
 ```
 
-Внутри:
-
-* `item.id`, `item.title`, `item.done` — это сигналы (с `.v` и `.c`);
-* `.map(...)` уже сам подписан на изменения списка (через `useSyncExternalStore` и `Effect`).
-
 ---
 
-## `signalRC(initial)`
+## `useWatch(fn, deps?, priorityOrMode?, opts?)` — эффект, но реактивный
 
-### Что это
-
-Фабрика для создания **глобального сигнала** (вне React), но сразу с `.c` и React-подпиской.
-
-Отличается от `useSignal`:
-
-* `useSignal` — хук, создаёт сигнал внутри компонента;
-* `signalRC` — обычная функция, создаёт сигнал один раз и потом его можно использовать в любом компоненте.
-
-### Сигнатура
-
-```ts
-export function signalRC<T>(initialValue: T): TRSignal<T>;
-```
-
-### Пример: глобальные часы
-
-```ts
-// timeModel.ts
-import { signalRC } from './react';
-
-export const timeLabel = signalRC(new Date().toLocaleTimeString());
-
-setInterval(() => {
-  timeLabel.v = new Date().toLocaleTimeString();
-}, 1000);
-```
+`useWatch` — это “React-friendly мост” к `Effect` из ядра. Он создаёт `Effect`, аккуратно диспоузит его при размонтировании/смене deps, и при этом зависимости строятся реактивно — через чтение `.v` внутри эффекта, а не через ручной deps-массив.
 
 ```tsx
-// Clock.tsx
-import { timeLabel } from './timeModel';
+function Logger() {
+  const count = useSignal(0);
 
-function Clock() {
-  return <div>{timeLabel.c}</div>;
+  useWatch(() => {
+    console.log('count changed:', count.v);
+  });
+
+  return <button onClick={() => (count.v += 1)}>{count.c}</button>;
 }
 ```
 
-`timeLabel`:
-
-* живёт в модели;
-* обновляется таймером;
-* ререндерит все компоненты, где используется `.c`.
-
 ---
 
-## Дополнительно: что там под капотом
+## `isErrorSnapshot(x)` — маленький хелпер для computed-ошибок
 
-Ниже — для тех, кому интересно, как всё устроено внутри.
-Для повседневного использования достаточно понимать хуки сверху.
+`safeSnapshot` возвращает либо значение, либо `{ __stmError: ... }`. `isErrorSnapshot` — это guard, чтобы быстро понять, что прилетело, и показать fallback.
 
----
-
-### Типы над сигналами
-
-```ts
-export type Sig<T = any> = Signal<T> | Computed<T>;
-
-type ReactSigMeta = { c: React.JSX.Element };
-
-export type TRSignal<T> = Signal<T> & ReactSigMeta;
-export type TRComputed<T> = Computed<T> & ReactSigMeta;
+```tsx
+const v = useSignalValue(someComputed);
+if (isErrorSnapshot(v)) return renderValue(v);
+return <div>{v}</div>;
 ```
 
-* `Sig<T>` — «что-то, у чего есть `.v`».
-* `TRSignal` / `TRComputed` — те же сигналы, но с полем `.c`.
-
 ---
+## `useSignalMap(initialValue, deps?)` — список, который обновляется точечно
 
-### Глубокая реактивность для списков
+А вот теперь самое вкусное: списки. `useSignalMap` создаёт `SignalMap`, “реактифицирует” leaf-сигналы внутри элементов (чтобы у каждого поля появился `.c`) и даёт методу списка `.map(renderFn)`. Важно, как это ощущается в UI: для `done` ты передаёшь в компонент конкретное значение и компонент реагирует на него обычным React-путём (props → render). А для `title.c` ты передаёшь уже готовый маленький изолированный реактивный кусочек UI, который сам подписан на `todo.title` и обновляется внутри себя — поэтому изменение текста не требует перерендеривать весь компонент строки.
 
-```ts
-type Reactify<S> =
-  S extends Signal<infer U>
-    ? TRSignal<U>
-    : S extends Computed<infer U>
-      ? TRComputed<U>
-      : S extends ReadonlyArray<infer U>
-        ? ReadonlyArray<Reactify<U>>
-        : S extends object
-          ? { [K in keyof S]: Reactify<S[K]> }
-          : S;
+И вот большой пример, где видно, что это не “демка ради демки”, а реально рабочая модель списка: добавлять/удалять, reverse, менять активный элемент, править title по текущему индексу — и всё это без `useState` и без ручных подписок. Важный момент: `title` мы прокидываем как `todo.title.c`, чтобы обновление текста происходило внутри встроенного реактивного мини-компонента, а не через перерендер всего компонента `TodoItem`.
 
-export type ReactDeep<T> = Reactify<DeepSignal<T>>;
+```tsx
+import { useRef } from 'react';
+import { useSignal, useSignalMap } from 'shared/utils/_stm/react/react';
 
-type BaseMap<T> = Omit<SignalMap<T>, 'map' | 'v'>;
+interface Todo {
+  title: string;
+  done: boolean;
+  id: string;
+}
 
-export type TRMapSignal<T> = BaseMap<T> & {
-  readonly v: ReadonlyArray<ReactDeep<T>>;
-  map(renderFn: (item: ReactDeep<T>, index: number) => any): React.ReactElement;
+export default function TodoApp() {
+  const refInput = useRef<HTMLInputElement>(null);
+
+  const activeIndex = useSignal(0);
+  const todos = useSignalMap<Todo>([]);
+
+  const createTask = (name = `New Task ${todos.length}`): Todo => {
+    return { id: `${performance.now()}`, title: name, done: false };
+  };
+
+  const addTodo = () => todos.push(createTask());
+  const removeTodo = () => todos.pop();
+  const reverseTodos = () => todos.reverse();
+
+  // ключи для React: стабильные, по id
+  todos.itemKey = (todo) => todo.id.v;
+
+  return (
+    <div>
+      <h3>Todos</h3>
+
+      <button onClick={addTodo}>Добавить задачу</button>
+      <button onClick={removeTodo}>Удалить задачу</button>
+      <button onClick={reverseTodos}>reverse задачи</button>
+
+      {todos.map((todo, index) => {
+        return (
+          <TodoItem
+            isDone={todo.done.v}
+            title={todo.title.c}
+            remove={() => todos.removeAt(index)}
+            replace={() => todos.replaceAt(index, createTask('sdfsdfsdfsdf'))}
+            setActive={() => {
+              todo.done.v = !todo.done.v;
+              activeIndex.v = index;
+
+              todos.forEach((item, _i) => {
+                if (index === _i) return;
+                item.done.v = false;
+              });
+            }}
+          />
+        );
+      })}
+
+      <input
+        ref={refInput}
+        type="text"
+        onChange={({ currentTarget }) => {
+          const idx = activeIndex.v;
+          const list = todos.v;
+          if (!list[idx]) return;
+
+          list[idx].title.v = currentTarget.value;
+        }}
+      />
+    </div>
+  );
+}
+
+interface TodoItemProps {
+  isDone: boolean;
+  title: React.JSX.Element;
+  setActive: () => void;
+  remove: () => void;
+  replace: () => void;
+}
+
+const TodoItem = ({ isDone, title, setActive, remove, replace }: TodoItemProps) => {
+  return (
+    <div style={{ background: isDone ? 'red' : 'green' }}>
+      <h4>{title}</h4>
+
+      <input
+        type="checkbox"
+        checked={isDone}
+        onChange={() => {
+          setActive();
+        }}
+      />
+
+      <button onClick={remove}>удалить</button>
+      <button onClick={replace}>заменить</button>
+    </div>
+  );
 };
 ```
-
-Это типовая магия, которая:
-
-* берёт `DeepSignal<T>`;
-* добавляет `.c` на каждый листовой сигнал;
-* описывает, как выглядит `.v` у `SignalMap` внутри React.
-
 ---
 
-### `useSignalListener` и `renderValue`
+## Мини-резюме: что ты получаешь
 
-Внутренние вспомогательные штуки:
-
-```ts
-function useSignalListener(): [notify: () => void, externalStore: <T>(s: Sig<T>) => T];
-```
-
-* делает `Set` слушателей на `useSyncExternalStore`;
-* `notify()` дёргает всех;
-* `externalStore(sig)` возвращает актуальное значение `sig.v` и подписывает компонент.
-
-```ts
-export function renderValue<T>(value: T): React.ReactElement {
-  if (typeof value === 'object' && value !== null && 'type' in (value as any)) {
-    return value as unknown as React.ReactElement;
-  }
-  return <>{String(value)}</>;
-}
-```
-
-* если значение уже React-элемент — возвращает его;
-* иначе просто оборачивает в текст.
-
----
-
-### `.c` (мета-поле для сигналов)
-
-Общий конструктор:
-
-```ts
-function definedComponent(externalStore: ExternalStore, sig: Sig) {
-  const Comp = memo(() => {
-    const value = externalStore(sig);
-    return renderValue(value);
-  });
-
-  Object.defineProperty(sig, 'c', {
-    configurable: true,
-    enumerable: false,
-    value: <Comp />,
-  });
-}
-```
-
-Каждый раз, когда ты вызываешь:
-
-* `useSignal`,
-* `useComputed`,
-* `useSignalMap` (для листьев),
-* `signalRC`,
-
-на соответствующий сигнал/компьютед навешивается поле `.c`,
-которое:
-
-* знает, как подписаться на значение;
-* умеет перерендериться при изменении;
-* можно спокойно вставлять в JSX.
-
----
-
-В итоге:
-
-* если хочешь **локальное** состояние — `useSignal` / `useComputed`;
-* если хочешь подписаться на **глобальную модель** — `useSignalValue` / `signalRC`;
-* если работаешь со **списками** — `useSignalMap`;
-* если нужно просто повесить реактивный `Effect` на жизненный цикл компонента — `useWatch`.
-
-Типы и внутренности можно не трогать, но они всегда рядом, если захочется углубиться.
+Сигналы и computed, которые можно рендерить прямо как `{sig.c}`. Подписку “по-реактовски” через `useSyncExternalStore`, то есть корректно для concurrent. Ошибки computed не валят UI — у тебя всегда есть безопасный snapshot и понятный fallback. Эффекты пишутся реактивно через `useWatch`. А списки через `useSignalMap` становятся тем местом, где обновляется ровно то, что должно обновляться — и никто не притворяется, что `map()` это повод перерисовать вселенную.

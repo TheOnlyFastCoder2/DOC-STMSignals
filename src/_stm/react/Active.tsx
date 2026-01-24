@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { useWatch, type TRComputed, type TRSignal } from './react';
+import { useWatch, type TRComputed, type TRSignal, type Sig } from './react';
 import type { Signal } from '..';
 
 const isUndefined = Symbol('undefined');
-type Sg = TRSignal<any> | Signal<any> | TRComputed<any>;
+type Sg = TRSignal<any> | Signal<any> | TRComputed<any> | Sig<any>;
 interface ActiveProps<T> {
   sg?: Sg | typeof isUndefined;
   triggers?: Sg[];
   is?: T | T[] | ((v: T) => boolean) | typeof isUndefined;
   callback?: (v: boolean) => void;
-  children: React.ReactNode | (() => React.ReactNode);
+  children?: React.ReactNode | (() => React.ReactNode);
   ch?: React.ReactNode | (() => React.ReactNode);
 }
 
