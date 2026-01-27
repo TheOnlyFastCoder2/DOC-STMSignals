@@ -37,7 +37,7 @@ list.at(0)!.done.v = true;
 
 ## Два полезных инструмента: wrapItemInSignals и deepUnwrap
 
-### `wrapItemInSignals(item, onLeaf?, seen?)`
+### `wrapItemInSignals(item, onLeaf?, seen?, modeOrOpts?)`
 
 Это низкоуровневая “машинка оживления”: берёшь любое значение `item` и получаешь `DeepSignal<T>`, где примитивы и “листовые” сущности становятся `Signal`, plain-объекты разворачиваются по ключам, массивы — по элементам. В `SignalMap` она используется под капотом, но иногда её приятно вытащить на свет — когда тебе нужно оживить **один объект**, а не целый список, или когда хочется тонко контролировать процесс оборачивания.
 
@@ -128,6 +128,39 @@ const w2 = wrapItemInSignals(a, undefined, _cache);
 
 console.log(w1 === w2); // true
 ```
+`wrapModeOrOpts` — это правило, по которому библиотека решает, где заканчивается “внутренний мир” объекта и начинается “атом”. В режиме `'deep'` она лезет внутрь plain-объектов и массивов, превращая поля и элементы в маленькие сигналы, чтобы всё реагировало точечно. А если ты говоришь `'object'`, `'array'` или `'object+array'`, ты как бы ставишь табличку “не разбирай, держи целиком” — и объект/массив становится одним `Signal`. В варианте `WrapOptions` это уже не просто переключатель, а набор договорённостей: `isLeaf` позволяет точечно объявить “вот это значение — атом”.
+
+`stampIds` включает простую вещь: каждой созданной обёртке (и leaf-сигналам, и deep-объектам/массивам) проставляется скрытый стабильный числовой id. Он нужен не для реактивности, а для “узнавания” узлов: удобно делать ключи для списков, keyed-эффекты, отладку и любые сценарии, где ты хочешь различать элементы не по index, а по постоянному идентификатору. Если id уже был — он переиспользуется; если не был — создаётся и дальше живёт вместе с обёрткой.
+```ts live noInline
+// modeOrOpts можно передать строкой leafMode:
+const a = wrapItemInSignals(
+  { tags: ['a', 'b'], meta: { x: 1 } },
+  undefined,
+  undefined,
+  'array'
+);
+
+// tags станет одним Signal<string[]>, а meta развернётся глубоко:
+a.tags.v.push('c');     // tags — leaf Signal
+a.meta.x.v = 2;         // meta.x — deep Signal
+
+
+// или можно передать WrapOptions:
+const b = wrapItemInSignals(
+  { meta: { secret: true, x: 1 }, items: [{ id: 1 }] },
+  undefined,
+  undefined,
+  {
+    leafMode: 'deep',
+    isLeaf: (v) => !!v && typeof v === 'object' && (v as any).secret === true,
+    stampIds: true,
+  }
+);
+
+// meta станет одним Signal (из-за isLeaf), а items развернётся
+b.meta.v;               // meta — leaf Signal
+b.items[0].id.v = 2;    // items[0].id — deep Signal
+```
 ---
 
 ### `deepUnwrap(x, seen?)`
@@ -153,20 +186,17 @@ console.log(raw); // { id: 'a', title: 'Oat milk', done: true }
 
 ### Конструктор и параметры
 
+
 ```ts
-new SignalMap(
+new SignalMap<T, M>(
   initial: readonly T[] = [],
   onLeaf?: (sg: Signal<any>) => void,
-  nodeCache?: WeakMap<object, unknown>
+  nodeCache?: WeakMap<object, unknown>,
+  wrapModeOrOpts: M | WrapOptions<M> = 'deep' as M
 )
 ```
 
-* `initial` — исходные данные
-* `onLeaf` — коллбек на каждый созданный leaf `Signal`
-* `nodeCache` — общий `WeakMap`, который прокидывается в wrap как `seen` (это важнее, чем кажется)
-
-**nodeCache — не “косметический кеш”, а память графа по ссылкам.**
-Когда он может понадобиться: когда элементы разделяют вложенные объекты (shared refs) и ты хочешь, чтобы они делили **одни и те же** deep-обёртки; или когда ты часто делаешь replaceAll/replaceAt с теми же ссылками и хочешь стабильность обёрток.
+`initial` — исходный массив `T[]`. `onLeaf` — коллбек, который вызывается каждый раз, когда внутри deep-обёртки создаётся листовой `Signal` (удобно для дебага, метрик, навешивания `.c` в React-обвязке и т.п.). `nodeCache` — общий `WeakMap`, который прокидывается внутрь `wrapItemInSignals` как `seen`: он сохраняет identity обёрток по ссылкам, поэтому один и тот же исходный объект будет получать одну и ту же “обёртку” между разными операциями. `wrapModeOrOpts` — политика оборачивания: можно передать строковый `leafMode` (`'deep' | 'object' | 'array' | 'object+array'`) или `WrapOptions` (например, `isLeaf` и `stampIds`).
 
 ---
 
@@ -357,6 +387,15 @@ const first = list.shift();
 
 ```ts
 list.splice(1, 1, { id: 'x', title: 'Inserted', done: false });
+```
+
+**`removeRef(item)`** — удалить элемент по ссылке на wrapper
+
+`removeRef` нужен, когда у тебя на руках уже есть **сама обёртка элемента** (то, что вернул `list.at()` / `list.find()` / итерация), и ты хочешь удалить её из списка **без поиска индекса вручную**. Он просто находит позицию этого wrapper’а в текущем `list.v` и делает обычный `removeAt(idx)`. Если элемент уже не в списке — ничего не произойдёт.
+
+```ts
+const item = list.find((t: any) => t.id.v === 'b');
+if (item) list.removeRef(item);
 ```
 
 ---
