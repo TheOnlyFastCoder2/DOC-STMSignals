@@ -1,7 +1,3 @@
-// ──────────────────────────────────────────────
-// v6.3.5 — Reactive Core + Adaptive Phased Scheduler (prod-ready)
-// ──────────────────────────────────────────────
-
 /* =============== Strict SSR polyfills =============== */
 if (typeof globalThis.performance === 'undefined') {
   (globalThis as any).performance = { now: () => Date.now() };
@@ -16,17 +12,14 @@ if (typeof globalThis.cancelAnimationFrame === 'undefined') {
 
 /* ================= Visibility + HMR guards =================== */
 
-// 1) HMR: “поколение” планировщика. Старые runFrame перестают жить.
 const __STM_SCHED_GEN_KEY__ = '__stm_sched_gen_v635__';
 const __stmGen = ((globalThis as any)[__STM_SCHED_GEN_KEY__] =
   ((globalThis as any)[__STM_SCHED_GEN_KEY__] ?? 0) + 1);
 
 const isStaleScheduler = () => (globalThis as any)[__STM_SCHED_GEN_KEY__] !== __stmGen;
 
-// 2) Visibility: не гоняем RAF, когда вкладка скрыта
 let isDocVisible = typeof document === 'undefined' ? true : document.visibilityState === 'visible';
 
-// 3) Один visibility handler на всё приложение (чтобы не плодился в HMR)
 const __STM_VIS_HANDLER_KEY__ = '__stm_vis_handler_v635__';
 
 function stopRAF() {
@@ -50,7 +43,6 @@ function maybeStartRAF() {
 if (typeof document !== 'undefined') {
   const g = globalThis as any;
 
-  // снимаем старые (после hot reload)
   if (g[__STM_VIS_HANDLER_KEY__]) {
     document.removeEventListener('visibilitychange', g[__STM_VIS_HANDLER_KEY__]);
     window.removeEventListener('pagehide', g[__STM_VIS_HANDLER_KEY__]);
@@ -63,14 +55,14 @@ if (typeof document !== 'undefined') {
       stopRAF();
       return;
     }
-    // вернулись на вкладку
+
     maybeStartRAF();
   };
 
   document.addEventListener('visibilitychange', g[__STM_VIS_HANDLER_KEY__], {
     passive: true,
   } as any);
-  // полезно для bfcache / ухода со страницы
+
   window.addEventListener('pagehide', g[__STM_VIS_HANDLER_KEY__], { passive: true } as any);
 }
 
@@ -83,7 +75,6 @@ export type ErrorSnapshot = { __stmError: unknown };
 
 /* ================= Safe onError hook ================= */
 
-// важно: при одинаковой ошибке возвращаем один и тот же объект (иначе лишние ререндеры)
 const _errCache = new WeakMap<object, { err: unknown; snap: ErrorSnapshot }>();
 const STM_ERROR_ORIGIN = Symbol('stm.error.origin');
 
@@ -169,7 +160,7 @@ function scheduleSyncEffect(eff: Effect) {
   if (!syncQueue) syncQueue = new Set();
   syncQueue.add(eff);
 
-  if (isRunningSyncQueue) return; // уже крутится, просто добавили
+  if (isRunningSyncQueue) return;
 
   isRunningSyncQueue = true;
   try {
@@ -210,19 +201,17 @@ function adaptBudgets(frameMs: number) {
 function scheduleEffect(eff: Effect) {
   if (eff.isDisposed) return;
 
-  // логическое батчинг выше всего
   if (batchedEffects) {
     batchedEffects.add(eff);
     return;
   }
 
-  // глобальный режим может форсить sync
   const useSync = schedulerMode === 'sync' || eff.mode === 'sync';
 
   if (useSync) {
     scheduleSyncEffect(eff);
   } else {
-    schedule(eff); // твой текущий планировщик с queues + RAF
+    schedule(eff);
   }
 }
 
@@ -269,7 +258,7 @@ function runHighQueue(limit = Infinity) {
   while (queues.high.size && handled < limit) {
     const it = queues.high.values().next();
     const eff = it.value as Effect;
-    queues.high.delete(eff); // delete-before-run
+    queues.high.delete(eff);
     if (!eff.isDisposed && eff._dirty) eff.run();
     handled++;
   }
@@ -281,7 +270,7 @@ function runPhase(set: Set<Effect>, budgetChecker: () => boolean) {
     let i = 0;
     while (i++ < CHUNK && set.size && budgetChecker()) {
       const eff = set.values().next().value as Effect;
-      set.delete(eff); // delete-before-run (self-resched safe)
+      set.delete(eff);
       if (!eff.isDisposed && eff._dirty) eff.run();
     }
   }
@@ -333,15 +322,15 @@ export function runFrame() {
   let bursts = 0;
   if (queues.high.size) {
     runHighQueue(HIGH_BURST_LIMIT);
-    bursts = 1; // фиксируем факт добора (если делаете цикл — инкрементируйте внутри)
-    budgetStart = performance.now(); // перезапускаем бюджет после добора
+    bursts = 1;
+    budgetStart = performance.now();
   }
 
   /* ── LOW (budgeted or forced) ────────────────────── */
   phase = 'idle';
   const shouldForceLow = framesSinceLow >= LOW_FORCE_EVERY_N_FRAMES;
   if (queues.low.size && (haveLowBudget() || shouldForceLow)) {
-    const checker = shouldForceLow ? () => true : haveLowBudget; // при форсе игнорируем бюджет
+    const checker = shouldForceLow ? () => true : haveLowBudget;
     runPhase(queues.low, checker);
     framesSinceLow = 0;
   } else if (queues.low.size) {
@@ -363,9 +352,9 @@ export function runFrame() {
 /* ================== Telemetry ======================== */
 (globalThis as any).__v6stats__ = {
   phase: 'idle' as Phase,
-  lastFrameDuration: 0, // time since budgetStart (без первичного HIGH)
-  lastFrameTotal: 0, // полный кадр (включая первичный HIGH)
-  highBursts: 0, // сколько раз добирали HIGH внутри кадра (здесь 0/1)
+  lastFrameDuration: 0,
+  lastFrameTotal: 0,
+  highBursts: 0,
   queues: { high: 0, normal: 0, low: 0 },
 };
 function updateTelemetry(duration: number, total: number, bursts: number) {
@@ -384,7 +373,7 @@ function updateTelemetry(duration: number, total: number, bursts: number) {
 
 /* ================== Linking utils ==================== */
 function linkOnce(source: Signal | Computed, target: Computed | Effect): Link | void {
-  if (source === target) return; // no self-link
+  if (source === target) return;
   (target as any)._depMap ??= new WeakMap<Signal | Computed, Link>();
   const depMap: WeakMap<Signal | Computed, Link> = (target as any)._depMap;
 
@@ -393,12 +382,10 @@ function linkOnce(source: Signal | Computed, target: Computed | Effect): Link | 
 
   const link: Link = { source, target };
 
-  // attach to source._targets
   link.nextTarget = (source as any)._targets;
   if ((source as any)._targets) (source as any)._targets.prevTarget = link;
   (source as any)._targets = link;
 
-  // attach to target._sources
   link.nextSource = (target as any)._sources;
   if ((target as any)._sources) (target as any)._sources.prevSource = link;
   (target as any)._sources = link;
@@ -413,7 +400,6 @@ function unlinkAllSources(t: { _sources?: Link; _depMap?: WeakMap<any, Link> }) 
     const next = node.nextSource;
     const src = node.source as any;
 
-    // detach from src._targets
     if (src._targets === node) {
       src._targets = node.nextTarget ?? undefined;
       if (node.nextTarget) node.nextTarget.prevTarget = undefined;
@@ -422,7 +408,6 @@ function unlinkAllSources(t: { _sources?: Link; _depMap?: WeakMap<any, Link> }) 
       if (node.nextTarget) node.nextTarget.prevTarget = node.prevTarget;
     }
 
-    // remove mapping from depMap
     t._depMap?.delete(node.source);
 
     node.nextSource = node.prevSource = node.nextTarget = node.prevTarget = undefined;
@@ -469,7 +454,7 @@ export class Signal<T = any> {
 
     let node = this._targets;
     while (node) {
-      const next = node.nextTarget; // capture next before callback
+      const next = node.nextTarget;
       node.target.markDirty();
       node = next;
     }
@@ -486,7 +471,6 @@ export class Computed<T = any> {
   private _computing = false;
   private _hasValue = false;
 
-  // ✅ NEW: error state
   private _hasError = false;
   private _error: unknown = null;
 
@@ -496,7 +480,6 @@ export class Computed<T = any> {
     this.fn = fn;
   }
 
-  // ✅ NEW: invalidate targets when state toggles (ok <-> error)
   private _notifyTargets(skip?: Computed | Effect) {
     const targets = this._targets;
     if (!targets) return;
@@ -518,11 +501,9 @@ export class Computed<T = any> {
   get v() {
     if (this._dirty) this.recompute();
 
-    // ✅ IMPORTANT: линк ставим ДО throw, иначе зависимость не восстановится
     const ctx = currentContext;
     if (ctx && ctx !== this) linkOnce(this as any, ctx);
 
-    // ✅ propagate error
     if (this._hasError) throw this._error;
 
     if (!this._hasValue) throw new Error('Computed accessed before first successful compute');
@@ -555,7 +536,6 @@ export class Computed<T = any> {
       this._hasError = true;
       this._error = e;
 
-      // ✅ логируем только у "первоисточника"
       let shouldLog = true;
       if (e && typeof e === 'object') {
         const obj = e as any;
@@ -564,14 +544,12 @@ export class Computed<T = any> {
       }
       safeOnError(e, 'computed');
 
-      // ✅ при входе в ошибку — инвалидируем зависимых
       if (!wasErrored) this._notifyTargets(outerCtx as any);
     } finally {
       this._computing = false;
       currentContext = prev;
     }
 
-    // ✅ при выходе из ошибки — тоже инвалидируем зависимых
     if (wasErrored && !this._hasError) {
       this._notifyTargets(outerCtx as any);
     }
@@ -626,8 +604,7 @@ export class Effect {
       this.priority = priorityOrMode;
     }
 
-    const lazy = opts?.lazy ?? true;
-    if (lazy) enqueueOrBatch(this);
+    if (opts?.lazy) enqueueOrBatch(this);
     else this.run();
   }
 
@@ -646,7 +623,6 @@ export class Effect {
         const cleanup = this.fn();
         if (typeof cleanup === 'function') this.disposeFn = cleanup;
       } catch (e) {
-        // ✅ НЕ ставим _dirty=true — не ретраим бесконечно
         if (!safeOnError(e, 'effect')) throw e;
       } finally {
         currentContext = prev;
@@ -654,8 +630,6 @@ export class Effect {
     } finally {
       this._running = false;
 
-      // ✅ оставляем: если self-dirty случился во время run (sync-mode edge),
-      // тогда надо перескейджулить
       if (this._dirty && !this.isDisposed) {
         scheduleEffect(this);
       }
@@ -703,6 +677,12 @@ export const effect = (
   opts?: EffectOptions
 ) => new Effect(fn, kind, opts);
 
+export const lazyEffect = (
+  fn: () => void | (() => void),
+  kind: EffectKind = 'normal',
+  opts?: EffectOptions
+) => new Effect(fn, kind, { ...opts, lazy: true });
+
 export const __SSR_STATE__: Record<string, any> = {};
 
 export type SSRSignal<T> = Signal<T> & { __ssrId: string };
@@ -711,7 +691,6 @@ export function ssrSignal<T>(initial: T, explicitId: string): SSRSignal<T> {
   const sg = signal<T>(initial) as SSRSignal<T>;
   sg.__ssrId = id;
 
-  // КЛИЕНТ
   if (typeof window !== 'undefined') {
     const g = window as any;
     const state = g.__SSR_STATE__ as Record<string, any> | undefined;

@@ -133,8 +133,8 @@ export default function PlaygroundProvider({ code, children, ...props }: Props) 
     setCodeOverride(base);
     setRunKey((k) => k + 1);
   };
+
   useEffect(() => {
-    console.log('runKey', runKey);
     return () => {
       toResetNext();
       consoleBuffer.clear();
