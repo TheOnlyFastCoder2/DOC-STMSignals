@@ -8,7 +8,6 @@ import Heading from '@theme/Heading';
 
 import $ from './index.module.css';
 
-// import './reactScan.js';
 import Notifications from '../components/Notifications';
 import Media from '../components/Media';
 import srcVideo from './video.webm';
