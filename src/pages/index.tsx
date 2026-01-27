@@ -8,13 +8,13 @@ import Heading from '@theme/Heading';
 
 import $ from './index.module.css';
 
-import './reactScan.js';
+// import './reactScan.js';
 import Notifications from '../components/Notifications';
 import Media from '../components/Media';
 import srcVideo from './video.webm';
 import { Spring } from '../_stm/react/animation/Spring';
 import { Sig, useSignal } from '../_stm/react/react';
-import { signal } from '../_stm';
+
 function HomepageHeader() {
   const { siteConfig } = useDocusaurusContext();
   const isActive = useSignal(true);

@@ -23,7 +23,15 @@ const config: Config = {
   projectName: 'DOC-STMSignals',
 
   onBrokenLinks: 'throw',
-
+  headTags: [
+    {
+      tagName: 'script',
+      attributes: {
+        crossOrigin: 'anonymous',
+        src: '//unpkg.com/react-scan/dist/auto.global.js',
+      },
+    },
+  ],
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
