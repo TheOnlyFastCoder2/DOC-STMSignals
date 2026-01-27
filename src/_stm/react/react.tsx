@@ -1,4 +1,11 @@
-import { memo, useEffect as _useEffect, useEffect, useRef, type DependencyList } from 'react';
+import {
+  memo,
+  useEffect as _useEffect,
+  useEffect,
+  useRef,
+  type DependencyList,
+  ReactElement,
+} from 'react';
 import { useSyncExternalStore } from 'react';
 import {
   Signal,
@@ -11,47 +18,42 @@ import {
   type EffectOptions,
   safeSnapshot,
 } from '../index';
-import { SignalMap, type DeepSignal, type LeafMode } from '../signalMap'; // или из '../index', если реэкспортируешь
-
-/* =============== Типы над сигналами =============== */
+import { SignalMap, type DeepSignal, type LeafMode } from '../signalMap';
 
 export type Sig<T = any> = Signal<T> | Computed<T> | { get v(): T };
 
-/** Мета для «реактивного» сигнала — .c с готовым React-элементом */
 type ReactSigMeta = { c: React.JSX.Element };
 
-// Листовой writable-сигнал под React
 export type TRSignal<T> = Signal<T> & ReactSigMeta;
 
-// Листовой computed (read-only) под React
 export type TRComputed<T> = Computed<T> & ReactSigMeta;
 
-/** DeepSignal с .c на каждом листовом Signal */
+type Unsignal<T> =
+  T extends Signal<infer U> ? Unsignal<U> : T extends Computed<infer U> ? Unsignal<U> : T;
+
 type Reactify<S> =
-  S extends Signal<infer U>
+  S extends TRSignal<infer U>
     ? TRSignal<U>
-    : S extends Computed<infer U>
+    : S extends TRComputed<infer U>
       ? TRComputed<U>
-      : S extends ReadonlyArray<infer U>
-        ? ReadonlyArray<Reactify<U>>
-        : S extends object
-          ? { [K in keyof S]: Reactify<S[K]> }
-          : S;
+      : S extends Signal<infer U>
+        ? TRSignal<Reactify<Unsignal<U>>>
+        : S extends Computed<infer U>
+          ? TRComputed<Reactify<Unsignal<U>>>
+          : S extends ReadonlyArray<infer U>
+            ? ReadonlyArray<Reactify<U>>
+            : S extends object
+              ? { [K in keyof S]: Reactify<S[K]> }
+              : S;
+
 export type ReactDeep<T, M extends LeafMode> = Reactify<DeepSignal<T, M>>;
-type BaseMap<T> = Omit<SignalMap<T>, 'map' | 'v'>;
-/** SignalMap, у которого v типизирован как массив DeepReact, + .map(renderFn) → JSX */
-export type TRMapSignal<T, M extends LeafMode = 'deep'> = BaseMap<T> & {
+type BaseMap<T, M extends LeafMode> = Omit<SignalMap<T, M>, 'map' | 'v' | 'removeRef'>;
+export type TRMapSignal<T, M extends LeafMode = 'deep'> = BaseMap<T, M> & {
   readonly v: ReadonlyArray<ReactDeep<T, M>>;
   map(renderFn: (item: ReactDeep<T, M>, index: number) => any): React.ReactElement;
+  removeRef(item: ReactDeep<T, M>): void;
 };
-/* =============== Внутренний listener-хелпер =============== */
 
-/**
- * Один useSignalListener даёт:
- *  - Set слушателей (из useSyncExternalStore)
- *  - функцию notify(), которая дергает всех
- *  - externalStore(sig) — обёртку для useSyncExternalStore
- */
 function useSignalListener(): [() => void, ExternalStoreFn] {
   const listenersRef = useRef<Set<() => void>>(new Set());
   const notifyRef = useRef(() => {
@@ -71,7 +73,27 @@ function useSignalListener(): [() => void, ExternalStoreFn] {
   return [notifyRef.current, externalStore];
 }
 
-/* =============== Общий конструктор .c =============== */
+function createStoreHub(): { notify: () => void; externalStore: ExternalStoreFn } {
+  const listeners = new Set<() => void>();
+
+  const notify = () => {
+    for (const l of listeners) l();
+  };
+
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+
+  const externalStore: ExternalStoreFn = (sig) =>
+    useSyncExternalStore(
+      subscribe,
+      () => safeSnapshot(sig as any),
+      () => safeSnapshot(sig as any)
+    );
+
+  return { notify, externalStore };
+}
 
 export type ErrorSnapshot = { __stmError: unknown };
 type ExternalStoreFn = <T>(s: Sig<T>) => T | ErrorSnapshot;
@@ -88,7 +110,6 @@ function definedComponent<T>(externalStore: ExternalStoreFn, sig: Sig<T>) {
     value: <Comp />,
   });
 }
-/** Рендер значения, если это не уже готовый React-элемент */
 export function renderValue<T>(value: T): React.ReactElement {
   if (value && typeof value === 'object' && '__stmError' in (value as any)) {
     const e = (value as any).__stmError;
@@ -101,8 +122,6 @@ export function renderValue<T>(value: T): React.ReactElement {
   }
   return <>{String(value)}</>;
 }
-
-/* =============== useSignal =============== */
 
 export function useSignal<T>(initialValue: T): TRSignal<T> {
   const [notify, externalStore] = useSignalListener();
@@ -135,10 +154,8 @@ export function useSignal<T>(initialValue: T): TRSignal<T> {
 
   return sigRef.current as TRSignal<T>;
 }
-
-/* =============== useSignalValue (подписка на конкретный сигнал) =============== */
-
-export function useSignalValue<T>(sg: Sig<T>): T | ErrorSnapshot {
+// | ErrorSnapshot
+export function useSignalValue<T>(sg: Sig<T>): T | ReactElement {
   const [notify, externalStore] = useSignalListener();
 
   _useEffect(() => {
@@ -154,13 +171,14 @@ export function useSignalValue<T>(sg: Sig<T>): T | ErrorSnapshot {
       eff.dispose();
     };
   }, [notify, sg]);
-
-  return externalStore(sg);
+  const val = externalStore(sg);
+  if (isErrorSnapshot(val)) return renderValue(val);
+  return val as T;
 }
 
-export function signalRC<T>(initialValue: T): TRSignal<T> {
-  const sig = signal<T>(initialValue) as TRSignal<T>;
-
+function rcify<T>(sig: Signal<T>): TRSignal<T>;
+function rcify<T>(sig: Computed<T>): TRComputed<T>;
+function rcify<T>(sig: any) {
   const listeners = new Set<() => void>();
 
   const Comp = memo(() => {
@@ -169,8 +187,8 @@ export function signalRC<T>(initialValue: T): TRSignal<T> {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
-      () => safeSnapshot(sig),
-      () => safeSnapshot(sig)
+      () => safeSnapshot(sig as any),
+      () => safeSnapshot(sig as any)
     );
 
     return renderValue(value);
@@ -184,7 +202,7 @@ export function signalRC<T>(initialValue: T): TRSignal<T> {
 
   new Effect(() => {
     try {
-      sig.v;
+      safeSnapshot(sig as any);
     } finally {
       for (const l of listeners) l();
     }
@@ -193,8 +211,13 @@ export function signalRC<T>(initialValue: T): TRSignal<T> {
   return sig;
 }
 
-/* =============== useComputed =============== */
+export function signalRC<T>(initialValue: T): TRSignal<T> {
+  return rcify(signal<T>(initialValue) as Signal<T>);
+}
 
+export function computedRC<T>(fn: () => T): TRComputed<T> {
+  return rcify(computed(fn) as Computed<T>);
+}
 export function useComputed<T>(fn: () => T): TRComputed<T> {
   const [notify, externalStore] = useSignalListener();
   const compRef = useRef<Computed<T> | null>(null);
@@ -223,8 +246,6 @@ export function useComputed<T>(fn: () => T): TRComputed<T> {
   return compRef.current as TRComputed<T>;
 }
 
-/* =============== useWatch =============== */
-
 export function useWatch(
   fn: () => void,
   deps: DependencyList = [],
@@ -239,8 +260,6 @@ export function useWatch(
     return () => eff.dispose();
   }, [cb, ...deps]);
 }
-
-/* =============== useSignalMap =============== */
 
 export function useSignalMap<T, M extends LeafMode = 'deep'>(
   initialValue: readonly T[],
@@ -309,4 +328,61 @@ export function useSignalMap<T, M extends LeafMode = 'deep'>(
 
 export function isErrorSnapshot(x: unknown): x is ErrorSnapshot {
   return !!x && typeof x === 'object' && '__stmError' in (x as any);
+}
+
+export function signalMapRC<T, M extends LeafMode = 'deep'>(
+  initialValue: readonly T[] = [],
+  onLeaf?: (leaf: Signal<any>) => void,
+  wrapMode: M = 'deep' as M
+): TRMapSignal<T, M> {
+  const leafHub = createStoreHub();
+  const listHub = createStoreHub();
+
+  const mapSignal = new SignalMap<T, M>(
+    initialValue,
+    (leaf: Signal<any>) => {
+      onLeaf?.(leaf);
+      definedComponent(leafHub.externalStore, leaf);
+      effect(() => {
+        leaf.v;
+        leafHub.notify();
+      });
+    },
+    undefined,
+    wrapMode
+  );
+
+  effect(() => {
+    mapSignal.v;
+    listHub.notify();
+  });
+
+  Object.defineProperty(mapSignal, 'map', {
+    configurable: true,
+    enumerable: false,
+    value: (renderFn: (item: any, index: number) => React.ReactNode) => {
+      const Row = memo(({ item, index }: { item: any; index: number }) => {
+        const node = useComputed(() => renderFn(item, index));
+        return node.c;
+      });
+
+      const Map = memo(() => {
+        const state = listHub.externalStore(mapSignal);
+
+        if (isErrorSnapshot(state)) return renderValue(state);
+
+        const keyOf =
+          mapSignal.itemKey ?? ((item: any, index: number) => item?.id?.v ?? item?.id ?? index);
+
+        return (state as any[]).map((item, index) => (
+          <Row key={keyOf(item, index)} item={item} index={index} />
+        ));
+      });
+
+      Map.displayName = 'SignalMapRC.Map';
+      return <Map />;
+    },
+  });
+
+  return mapSignal as any;
 }

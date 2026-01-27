@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useWatch, type TRSignal } from '../react';
+import { useSignal, useWatch, type TRSignal } from '../react';
 import { startSpring, isSpringRunning } from './springTicker';
 
 type Unit = 'px' | '%' | 'vw' | 'vh' | 'em' | 'rem';
@@ -30,9 +30,6 @@ function formatUnitValue(n: number, unit: Unit) {
   return `${rounded}${unit}`;
 }
 
-// ---------------------------
-// progress helpers (0..1)
-// ---------------------------
 function numOf(v: any): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
 
@@ -47,7 +44,6 @@ function numOf(v: any): number | null {
 }
 
 function dist(a: any, b: any): number | null {
-  // array distance (L2)
   if (Array.isArray(a) && Array.isArray(b)) {
     const n = Math.min(a.length, b.length);
     if (n === 0) return 0;
@@ -83,7 +79,7 @@ function calcProgress(cur: any, start: any, target: any): number {
 
 export default function useSpringSignal(
   source: TRSignal<any>,
-  signal: TRSignal<any>,
+
   {
     stiffness = 170,
     damping = 26,
@@ -91,14 +87,11 @@ export default function useSpringSignal(
     onSettled,
     enabled = true,
 
-    // ✅ NEW: per-animation speed multiplier
     speed = 1,
 
-    // ✅ extra opts
     onTick,
     skipFirst = true,
 
-    // ✅ NEW: progress callback (value + percent)
     onProgress,
     monotonicProgress = true,
   }: {
@@ -117,14 +110,13 @@ export default function useSpringSignal(
     monotonicProgress?: boolean;
   } = {}
 ) {
+  const signal = useSignal(source.v);
   const velRef = useRef<number | number[]>(0);
   const stopRef = useRef<null | (() => void)>(null);
   const didInitRef = useRef(false);
 
-  // ✅ ping-pong buffers for arrays
   const arrBufRef = useRef<null | { a: number[]; b: number[]; flip: boolean; len: number }>(null);
 
-  // ✅ progress tracking
   const startRef = useRef<any>(null);
   const targetRef = useRef<any>(null);
   const maxProgRef = useRef<number>(0);
@@ -160,7 +152,6 @@ export default function useSpringSignal(
 
   function emitProgress(value: any) {
     const { onProgress, monotonicProgress } = optsRef.current;
-
     if (!onProgress) return;
 
     let p = calcProgress(value, startRef.current, targetRef.current);
@@ -196,15 +187,14 @@ export default function useSpringSignal(
 
       const enabledNow = readEnabled(enabled);
 
-      // ✅ speed safe range
       const sp = Math.max(0.05, Math.min(12, spRaw || 1));
       const totalDt = dt * sp;
 
-      // ✅ stable stepping (substeps)
-      const maxStep = 1 / 60; // safe
+      const maxStep = 1 / 60;
       const steps = Math.max(1, Math.ceil(totalDt / maxStep));
       const h = totalDt / steps;
 
+      // === DISABLED: instantly sync and settle ===
       if (!enabledNow) {
         stopRef.current?.();
         stopRef.current = null;
@@ -222,10 +212,10 @@ export default function useSpringSignal(
 
       const to = source.v;
 
-      // validate supported types
       const toU = parseUnitValue(to);
       const ok = typeof to === 'number' || isArray(to) || !!toU;
 
+      // === NOT ANIMATABLE: instantly sync and settle ===
       if (!ok) {
         signal.v = clone(to);
         velRef.current = 0;
@@ -237,9 +227,7 @@ export default function useSpringSignal(
         return false;
       }
 
-      // ===========================
-      // ✅ ARRAY SPRING
-      // ===========================
+      // === ARRAY ===
       if (isArray(to)) {
         let cur = signal.v;
         if (!isArray(cur)) cur = to;
@@ -264,20 +252,13 @@ export default function useSpringSignal(
         let next = buf.flip ? buf.a : buf.b;
         buf.flip = !buf.flip;
 
-        // integrate with substeps
         let stillMoving = false;
-
-        // use local references for speed
         const vel = velRef.current as number[];
 
-        // we must read from "curArr" each frame; but curArr is signal.v which might be previous buffer
-        // we keep a stable "curLocal" that updates each substep
         let curLocal = curArr;
 
         for (let s = 0; s < steps; s++) {
-          // ensure we have a writable next buffer for this substep
           if (s > 0) {
-            // swap buffers every substep to avoid overwriting curLocal
             next = buf.flip ? buf.a : buf.b;
             buf.flip = !buf.flip;
           }
@@ -324,9 +305,7 @@ export default function useSpringSignal(
         return true;
       }
 
-      // ===========================
-      // ✅ NUMBER SPRING
-      // ===========================
+      // === NUMBER ===
       if (typeof signal.v === 'number' && typeof to === 'number') {
         let x = signal.v as number;
         let v = velRef.current as number;
@@ -362,9 +341,7 @@ export default function useSpringSignal(
         return true;
       }
 
-      // ===========================
-      // ✅ UNIT STRING SPRING
-      // ===========================
+      // === UNIT STRING ===
       const fromU = parseUnitValue(signal.v);
       const toU2 = parseUnitValue(to);
 
@@ -411,7 +388,7 @@ export default function useSpringSignal(
         return true;
       }
 
-      // fallback (shouldn’t happen)
+      // === fallback instant ===
       signal.v = clone(to);
       velRef.current = 0;
       arrBufRef.current = null;
@@ -426,7 +403,7 @@ export default function useSpringSignal(
   useWatch(() => {
     const to = source.v;
 
-    // ✅ first update (mount): usually set without animation
+    // init
     if (!didInitRef.current) {
       didInitRef.current = true;
 
@@ -435,7 +412,6 @@ export default function useSpringSignal(
         velRef.current = 0;
         arrBufRef.current = null;
 
-        // init progress tracking as "done"
         startRef.current = clone(signal.v);
         targetRef.current = clone(to);
         maxProgRef.current = 1;
@@ -450,7 +426,7 @@ export default function useSpringSignal(
     const isUnit = !!parseUnitValue(to);
     const ok = typeof to === 'number' || Array.isArray(to) || isUnit;
 
-    // if not ok or disabled => snap
+    // ✅ ВАЖНО: тут раньше НЕ было onSettled(), из-за этого settled мог "пропасть"
     if (!ok || !enabledNow) {
       stopRef.current?.();
       stopRef.current = null;
@@ -460,20 +436,23 @@ export default function useSpringSignal(
 
       signal.v = clone(to);
 
-      // progress: done
       startRef.current = clone(signal.v);
       targetRef.current = clone(to);
       maxProgRef.current = 1;
 
       optsRef.current.onTick?.();
       optsRef.current.onProgress?.(signal.v, 1);
+
+      // ✅ FIX: гарантированно сообщаем settled
+      optsRef.current.onSettled?.();
+
       return;
     }
 
-    // ✅ type sync (no snapping for unit transitions)
     const fromUnit = parseUnitValue(signal.v);
     const toUnit = parseUnitValue(to);
 
+    // normalize initial type
     if (Array.isArray(to) && !Array.isArray(signal.v)) {
       signal.v = clone(to);
       velRef.current = new Array(to.length).fill(0);
@@ -493,7 +472,7 @@ export default function useSpringSignal(
       }
     }
 
-    // ✅ reset progress tracking for new target
+    // new run start/target
     startRef.current = clone(signal.v);
     targetRef.current = clone(to);
     maxProgRef.current = 0;

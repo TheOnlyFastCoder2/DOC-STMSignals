@@ -1,13 +1,15 @@
 'use client';
+
 import React, { useEffect, useImperativeHandle, useLayoutEffect, useState } from 'react';
 import { useSignal, useWatch } from '../react';
 
 import useSpringSignal from './useSpringSignal';
 import useVisibilitySignal, { type VisibleSignalState } from './useVisibilitySignal';
-import { batch, Signal, untracked } from '../../index';
+import { batch, untracked } from '../../index';
 import { requestDomCommit } from './domBatcher';
+import { DeepSignal } from '../../signalMap';
 
-type SpringPhase = 'enter' | 'leave' | 'down' | 'up' | 'default' | 'active';
+type SpringPhase = 'default' | 'active';
 type VisibilityMode = 'gate' | 'progress';
 type TransformStyleValue = 'flat' | 'preserve-3d';
 
@@ -21,7 +23,7 @@ type SpringPropConfig = {
 
   isActive?: ReactiveLike<boolean>;
   phase?: ReactiveLike<SpringPhase>;
-  triggers?: ('hover' | 'enter' | 'leave' | 'up' | 'down')[];
+
   delay?: number | (() => number);
   onProgress?: (phase: SpringPhase, progress: number, el: HTMLDivElement | null) => void;
   speed?: number;
@@ -31,16 +33,6 @@ type DelayState = {
   timers: Record<string, any>;
   tokens: Record<string, number>;
   planned: Record<string, any>;
-};
-
-export type SpringHandle = {
-  st: {
-    rotateX: Signal<number>;
-    rotateY: Signal<number>;
-    translateX: Signal<number>;
-    translateY: Signal<number>;
-  };
-  el: HTMLDivElement | null;
 };
 
 const initConfig = {
@@ -57,11 +49,15 @@ const initConfig = {
   transformStyle: 'flat' as TransformStyleValue,
 };
 
+export type SpringHandle = {
+  st: DeepSignal<typeof initConfig, 'deep'>;
+  el: HTMLDivElement | null;
+};
+
 export interface SpringProps {
   children?: React.ReactNode;
 
   spring?: Partial<Record<keyof typeof initConfig, SpringPropConfig>>;
-  triggers?: ('hover' | 'enter' | 'leave' | 'up' | 'down')[];
   isActive?: ReactiveLike<boolean>;
 
   visibility?: Parameters<typeof useVisibilitySignal>[0];
@@ -72,12 +68,9 @@ export interface SpringProps {
   classInner?: string;
 
   coverThreshold?: number;
-  priority?: 'ui' | 'decor' | 'idle';
   onCoverChange?: (covered: boolean, index: number) => void;
-  onMouse?: (x: number, y: number) => void;
+
   refSpring?: React.RefObject<SpringHandle | null>;
-  phases?: SpringPhase[];
-  onToggle?: (v?: SpringPhase) => void;
 
   index?: number;
   total?: number;
@@ -93,7 +86,6 @@ export interface SpringProps {
   onPhaseSettled?: (phase: SpringPhase, progress: number, el: HTMLDivElement | null) => void;
   onPhaseProgress?: (phase: SpringPhase, progress: number, el: HTMLDivElement | null) => void;
 
-  nearSettleThreshold?: number;
   settleKey?: keyof typeof initConfig;
   style?: React.CSSProperties;
 }
@@ -112,16 +104,10 @@ const cssNum = (v: any) => {
   return String(Number(v) || 0);
 };
 
-const isEventPhase = (p: SpringPhase) =>
-  p === 'enter' || p === 'leave' || p === 'down' || p === 'up';
-
-const shouldReactToEvent = (
-  p: SpringPhase,
-  cfg: SpringPropConfig,
-  componentTriggers: ('hover' | 'enter' | 'leave' | 'up' | 'down')[]
-) => {
-  const list = cfg.triggers ?? componentTriggers;
-  return list.includes(p as any) || (list.includes('hover') && (p === 'enter' || p === 'leave'));
+const resolveValue = (x: any) => {
+  if (typeof x === 'function') return x();
+  if (x && typeof x === 'object' && 'v' in x) return (x as any).v;
+  return x;
 };
 
 const getDelayMs = (cfg?: SpringPropConfig) => {
@@ -172,30 +158,22 @@ const setPhase = (
   basePhase: SpringPhase,
   st: Record<string, any>,
   spring?: Partial<Record<keyof typeof initConfig, SpringPropConfig>>,
-  componentTriggers: ('hover' | 'enter' | 'leave' | 'up' | 'down')[] = [],
   delayState?: DelayState,
   isTouch?: boolean
 ) => {
   const has = Object.prototype.hasOwnProperty;
-  const baseIsEvent = isEventPhase(basePhase);
 
   batch(() => {
     for (const key in initConfig) {
       const cfg = (spring as any)?.[key] as SpringPropConfig | undefined;
       if (!cfg) continue;
 
-      const hasOverride = !!cfg.isActive || !!cfg.phase;
+      if (isTouch && cfg.isMobile === false) continue;
+      if (!isTouch && cfg.isMobile === true) continue;
 
       let phase: SpringPhase = basePhase;
-
-      if (cfg.phase) {
-        phase = cfg.phase.v;
-      } else if (!baseIsEvent && cfg.isActive) {
-        phase = cfg.isActive.v ? 'active' : 'default';
-      } else if (baseIsEvent) {
-        if (hasOverride && !cfg.triggers) continue;
-        if (!shouldReactToEvent(basePhase, cfg, componentTriggers)) continue;
-      }
+      if (cfg.phase) phase = cfg.phase.v;
+      else if (cfg.isActive) phase = cfg.isActive.v ? 'active' : 'default';
 
       const vals = cfg.values ?? {};
 
@@ -205,9 +183,10 @@ const setPhase = (
       else nextValue = (initConfig as any)[key];
 
       const d = getDelayMs(cfg);
+      const resolvedNow = resolveValue(nextValue);
 
       if (delayState && d > 0) {
-        if (Object.is(delayState.planned[key], nextValue) && delayState.timers[key]) continue;
+        if (Object.is(delayState.planned[key], resolvedNow) && delayState.timers[key]) continue;
 
         if (delayState.timers[key]) {
           clearTimeout(delayState.timers[key]);
@@ -216,11 +195,13 @@ const setPhase = (
 
         const tok = (delayState.tokens[key] ?? 0) + 1;
         delayState.tokens[key] = tok;
-        delayState.planned[key] = nextValue;
+        delayState.planned[key] = resolvedNow;
 
         delayState.timers[key] = setTimeout(() => {
           if (delayState.tokens[key] !== tok) return;
-          st[key].v = nextValue;
+
+          st[key].v = resolveValue(nextValue);
+
           delete delayState.timers[key];
         }, d);
 
@@ -231,9 +212,12 @@ const setPhase = (
         clearTimeout(delayState.timers[key]);
         delete delayState.timers[key];
       }
-      if (delayState) delayState.planned[key] = nextValue;
 
-      st[key].v = nextValue;
+      if (delayState) delayState.planned[key] = resolvedNow;
+
+      if (!Object.is(st[key].v, resolvedNow)) {
+        st[key].v = resolvedNow;
+      }
     }
   });
 };
@@ -245,16 +229,13 @@ const initParams: Parameters<typeof useVisibilitySignal>[0] = {
 export function Spring({
   children,
   spring,
-  triggers = [],
   isActive,
   visibility,
   visibilityMode = 'gate',
 
-  onToggle,
   className = '',
   classInner = '',
 
-  phases,
   index = 1,
   total = 0,
   coverThreshold = 0.35,
@@ -271,6 +252,7 @@ export function Spring({
   transformOrigin = [50, 50],
   perspective = 1000,
   perspectiveOrigin = [50, 50],
+  ...props
 }: SpringProps) {
   const elRef = React.useRef<HTMLDivElement>(null);
   const innerRef = React.useRef<HTMLDivElement>(null);
@@ -287,14 +269,12 @@ export function Spring({
   modeRef.current = visibilityMode;
 
   const phaseRef = React.useRef<SpringPhase>('default');
-
   const settledPhaseRef = React.useRef<SpringPhase | null>(null);
 
   const st: Record<string, any> = {};
   for (const key in initConfig) {
     st[key] = useSignal((spring as any)?.[key]?.values?.default ?? (initConfig as any)[key]);
   }
-  st.isPressed = useSignal(false);
   st.wasVisibleOnce = useSignal(false);
 
   const [isTouch, setIsTouch] = useState(false);
@@ -318,24 +298,7 @@ export function Spring({
   }, []);
 
   const applyPhase = (p: SpringPhase) => {
-    setPhase(p, st, spring, triggers, delayStateRef.current, isTouch);
-  };
-
-  const phaseHandler = (p: SpringPhase, pressed?: boolean) => {
-    if (pressed !== undefined) st.isPressed.v = pressed;
-    if (phaseRef.current !== p) {
-      phaseRef.current = p;
-      settledPhaseRef.current = null;
-    }
-    applyPhase(p);
-    if (phases?.includes(p)) onToggle?.(p);
-  };
-
-  const handle = {
-    down: () => phaseHandler('down', true),
-    up: () => phaseHandler('up', false),
-    enter: () => phaseHandler('enter'),
-    leave: () => phaseHandler('leave'),
+    setPhase(p, st, spring, delayStateRef.current, isTouch);
   };
 
   const dirtyRef = React.useRef(false);
@@ -360,12 +323,14 @@ export function Spring({
     const stiffness = cfg?.stiffness ?? 160;
     const damping = cfg?.damping ?? 18;
     const speed = cfg?.speed ?? 1;
+
     const vals = cfg?.values ?? {};
     const hasActive = Object.prototype.hasOwnProperty.call(vals, 'active');
+
     const userOnProgress = cfg?.onProgress;
     const isSettleKey = key === settleKeyResolved;
 
-    springSignals[key] = useSpringSignal(st[key], useSignal(st[key].v), {
+    springSignals[key] = useSpringSignal(st[key], {
       stiffness,
       damping,
       enabled: !!cfg && !(visibilityMode === 'progress' && hasActive),
@@ -428,7 +393,6 @@ export function Spring({
         const rx = springSignals.rotateX.v;
 
         inner.style.willChange = 'transform, opacity';
-        inner.style.transformStyle = springSignals.transformStyle.v;
 
         if (has('transformStyle')) {
           inner.style.transformStyle = springSignals.transformStyle.v;
@@ -436,7 +400,6 @@ export function Spring({
 
         const is3DResolved = is3D === true;
 
-        // === PERSPECTIVE (на контейнер!) ===
         if (is3DResolved && perspective) {
           el.style.perspective = cssLen(perspective);
           el.style.perspectiveOrigin = perspectiveOrigin
@@ -518,6 +481,7 @@ export function Spring({
 
           const vals = cfg.values ?? {};
           if (!Object.prototype.hasOwnProperty.call(vals, 'active')) continue;
+
           const a = Object.prototype.hasOwnProperty.call(vals, 'default')
             ? (vals as any).default
             : (initConfig as any)[key];
@@ -537,11 +501,7 @@ export function Spring({
 
       const phase: SpringPhase = p > eps ? 'active' : 'default';
       phaseRef.current = phase;
-
-      if (phases?.includes(phase)) onToggle?.(phase);
-
       settledPhaseRef.current = null;
-
       return;
     }
 
@@ -554,7 +514,6 @@ export function Spring({
       isVisible = v;
 
       if ((!isOne || !st.wasVisibleOnce.v) && v) st.wasVisibleOnce.v = true;
-
       if (isOne && st.wasVisibleOnce.v && !v) return;
 
       if (st.wasVisibleOnce.v) {
@@ -576,34 +535,23 @@ export function Spring({
     }
 
     applyPhase(phase);
-
-    if (phases?.includes(phase)) onToggle?.(phase);
   });
 
   useImperativeHandle(refSpring, () => ({
-    st: {
-      rotateX: st.rotateX,
-      rotateY: st.rotateY,
-      translateX: st.translateX,
-      translateY: st.translateY,
-    },
+    st: st as SpringHandle['st'],
     el: elRef.current,
   }));
 
   return (
     <div
+      className={className}
+      style={style}
+      {...props}
       ref={(el) => {
         elRef.current = el;
         if (el) el.style.willChange = 'transform';
         if (ref) ref.current = el;
       }}
-      className={className}
-      onPointerDown={handle.down}
-      onPointerUp={handle.up}
-      onPointerCancel={handle.up}
-      onPointerLeave={handle.leave}
-      onPointerEnter={handle.enter}
-      style={style}
     >
       <div className={classInner} ref={innerRef}>
         {children}

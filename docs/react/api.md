@@ -10,7 +10,7 @@ React-версия — это мостик между вашим **Reactive Core
 
 Главная фишка, ради которой это вообще приятно писать: у каждого Signal/Computed появляется **`.c`** — готовый React-элемент. Его можно просто вставить в JSX, и он сам будет подписываться и перерисовываться.
 
-```tsx
+```tsx live noInline render(<Counter />)
 function Counter() {
   const count = useSignal(0);
   const doubled = useComputed(() => count.v * 2);
@@ -46,13 +46,19 @@ return <div>Hello, {name.c}</div>;
 
 `useSignal` создаёт writable `Signal`, живущий ровно столько же, сколько живёт компонент. Плюс сразу добавляет `.c`, чтобы сигнал можно было рендерить напрямую. Это ощущается как обычный локальный state, только вместо `setState` ты пишешь в `sig.v`, а всё остальное (derived, эффекты, зависимости) строится поверх сигнального графа.
 
-```tsx
+```tsx live noInline render(<Form />)
 function Form() {
   const query = useSignal('');
+  const refInput = useRef<HTMLInputElement>(null);
+  useWatch(() => {
+    const input = refInput.current;
+    if(!input) return;
 
+    input.value = query.v;
+  })
   return (
     <div>
-      <input value={query.v} onChange={(e) => (query.v = e.target.value)} />
+      <input onChange={(e) => (query.v = e.target.value)} />
       <div>typed: {query.c}</div>
     </div>
   );
@@ -65,13 +71,18 @@ function Form() {
 
 Если сигнал создан где-то снаружи (в модуле, сервисе, контексте), `useSignalValue` даёт “React-подписку” на него и возвращает текущее значение (или `ErrorSnapshot`). Когда ты не владеешь сигналом, но хочешь показывать его в UI — это оно.
 
-```tsx
-export const userName = signal('Alice');
+```tsx live noInline render(<Header />)
+const userName = signal('Alice');
+const randomName = () => userName.v = Math.random();
 
 function Header() {
-  const v = useSignalValue(userName);
-  if (isErrorSnapshot(v)) return renderValue(v);
-  return <div>User: {v}</div>;
+  const name = useSignalValue(userName);
+  return (
+    <div>
+      <div>User: {name}</div>
+      <button onClick={randomName}>Change</button>
+    </div>
+  );
 }
 ```
 
@@ -81,11 +92,14 @@ function Header() {
 
 Иногда сигнал хочется создать вне компонента (как модульный store), но всё равно иметь `.c` для удобного рендера. `signalRC` делает именно это: создаёт Signal и сразу подцепляет к нему реактовскую подписку и `.c`.
 
-```tsx
-export const counter = signalRC(0);
-
+```tsx live noInline render(<App />)
+const counter = signalRC(0);
 function App() {
-  return <button onClick={() => (counter.v += 1)}>{counter.c}</button>;
+  return (
+    <button onClick={() => (counter.v += 1)}>
+      {counter.c}
+    </button>
+  );
 }
 ```
 
@@ -95,7 +109,7 @@ function App() {
 
 `useComputed` создаёт `Computed`, добавляет ему `.c` и следит, чтобы React обновлялся, когда computed меняется. По ощущениям это “как `useMemo`”, только deps не нужны: зависимости строятся автоматически по чтениям `.v`, а ошибки computed переживаются безопасно через `safeSnapshot`.
 
-```tsx
+```tsx live noInline render(<Price />)
 function Price() {
   const amount = useSignal(2);
   const price = useSignal(10);
@@ -104,8 +118,12 @@ function Price() {
 
   return (
     <div>
-      total: {total.c}
-      <button onClick={() => (amount.v += 1)}>+1</button>
+      <button  onClick={() => (amount.v += 1)}>
+        price: {amount.c}
+      </button>
+      <button onClick={() => (amount.v += 1)}>
+        +1 total: {total.c}
+      </button>
     </div>
   );
 }
@@ -117,30 +135,45 @@ function Price() {
 
 `useWatch` — это “React-friendly мост” к `Effect` из ядра. Он создаёт `Effect`, аккуратно диспоузит его при размонтировании/смене deps, и при этом зависимости строятся реактивно — через чтение `.v` внутри эффекта, а не через ручной deps-массив.
 
-```tsx
+```tsx live noInline render(<Logger />)
 function Logger() {
   const count = useSignal(0);
-
+  
   useWatch(() => {
-    console.log('count changed:', count.v);
-  });
+    if(count.v <= 0) return;
+    toNotify(`count changed: ${count.v}`)
+  },[]);
 
-  return <button onClick={() => (count.v += 1)}>{count.c}</button>;
+  return (
+    <button onClick={() => (count.v += 1)}>
+      {count.c}
+    </button>
+  );
 }
 ```
 
 ---
 
-## `isErrorSnapshot(x)` — маленький хелпер для computed-ошибок
+## Ошибки computed в React: не ломаем дерево, а показываем fallback
 
-`safeSnapshot` возвращает либо значение, либо `{ __stmError: ... }`. `isErrorSnapshot` — это guard, чтобы быстро понять, что прилетело, и показать fallback.
+`computed` может бросить ошибку — и в обычном React это легко превращается в “сломали всё дерево”. Поэтому в React-обвязке ошибки читаются безопасно (через `safeSnapshot`) и **приезжают как значение**, которое можно отрендерить (обычно это `{ __stmError: ... }`, но тебе уже не нужно это проверять руками — ты спрятал guard внутрь `renderValue`/хелперов).
 
-```tsx
-const v = useSignalValue(someComputed);
-if (isErrorSnapshot(v)) return renderValue(v);
-return <div>{v}</div>;
+Важно другое: **глобальный `onError` нужно инициализировать где-то один раз** (например, в entrypoint приложения). Тогда любые ошибки из `computed/effect` будут централизованно пойманы, залогированы и не уронят UI.
+
+```tsx live noInline render(<Demo />)
+onError((e, where) => {
+  console.error('[QtPySignals]', where, e);
+});
+
+const someComputed = computed(() => {
+  throw new Error('some error sdfsd');
+});
+
+function Demo() {
+  const v = useSignalValue(someComputed);
+  return <div>{v}</div>;
+}
 ```
-
 ---
 ## `useSignalMap(initialValue, deps?)` — список, который обновляется точечно
 
@@ -148,17 +181,14 @@ return <div>{v}</div>;
 
 И вот большой пример, где видно, что это не “демка ради демки”, а реально рабочая модель списка: добавлять/удалять, reverse, менять активный элемент, править title по текущему индексу — и всё это без `useState` и без ручных подписок. Важный момент: `title` мы прокидываем как `todo.title.c`, чтобы обновление текста происходило внутри встроенного реактивного мини-компонента, а не через перерендер всего компонента `TodoItem`.
 
-```tsx
-import { useRef } from 'react';
-import { useSignal, useSignalMap } from 'shared/utils/_stm/react/react';
-
+```tsx live noInline render(<TodoApp />)
 interface Todo {
   title: string;
   done: boolean;
   id: string;
 }
 
-export default function TodoApp() {
+function TodoApp() {
   const refInput = useRef<HTMLInputElement>(null);
 
   const activeIndex = useSignal(0);
@@ -189,7 +219,10 @@ export default function TodoApp() {
             isDone={todo.done.v}
             title={todo.title.c}
             remove={() => todos.removeAt(index)}
-            replace={() => todos.replaceAt(index, createTask('sdfsdfsdfsdf'))}
+            replace={() => {
+              const task = createTask('заменена задача');
+              todos.replaceAt(index, task);
+            }}
             setActive={() => {
               todo.done.v = !todo.done.v;
               activeIndex.v = index;
@@ -226,21 +259,21 @@ interface TodoItemProps {
   replace: () => void;
 }
 
-const TodoItem = ({ isDone, title, setActive, remove, replace }: TodoItemProps) => {
+const TodoItem = (props: TodoItemProps) => {
   return (
-    <div style={{ background: isDone ? 'red' : 'green' }}>
-      <h4>{title}</h4>
+    <div style={{ background: props.isDone ? 'red' : 'green' }}>
+      <h4>{props.title}</h4>
 
       <input
         type="checkbox"
-        checked={isDone}
+        checked={props.isDone}
         onChange={() => {
-          setActive();
+          props.setActive();
         }}
       />
 
-      <button onClick={remove}>удалить</button>
-      <button onClick={replace}>заменить</button>
+      <button onClick={props.remove}>удалить</button>
+      <button onClick={props.replace}>заменить</button>
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { Signal, signal, effect, Effect, computed } from './index';
+import { Signal, signal, effect, Effect, computed, untracked, Computed } from './index';
 
 type Priority = 'high' | 'normal' | 'low';
 
@@ -84,17 +84,21 @@ type AtomicArr<M extends LeafMode> = M extends 'array' | 'object+array' ? true :
 export type DeepSignal<T, M extends LeafMode> =
   T extends Leaf<infer U>
     ? Signal<U>
-    : T extends Builtin
-      ? Signal<T>
-      : T extends ReadonlyArray<infer U>
-        ? AtomicArr<M> extends true
+    : T extends Signal<infer U>
+      ? Signal<U>
+      : T extends Computed<infer U>
+        ? Computed<U>
+        : T extends Builtin
           ? Signal<T>
-          : ReadonlyArray<DeepSignal<U, M>>
-        : T extends object
-          ? AtomicObj<M> extends true
-            ? Signal<T>
-            : { [K in keyof T]: DeepSignal<T[K], M> }
-          : Signal<T>;
+          : T extends ReadonlyArray<infer U>
+            ? AtomicArr<M> extends true
+              ? Signal<T>
+              : ReadonlyArray<DeepSignal<U, M>>
+            : T extends object
+              ? AtomicObj<M> extends true
+                ? Signal<T>
+                : { [K in keyof T]: DeepSignal<T[K], M> }
+              : Signal<T>;
 
 /* ================== Helpers ================== */
 
@@ -244,6 +248,8 @@ export function wrapItemInSignals<T, M extends LeafMode = 'deep'>(
   };
 
   const wrap = (value: any): any => {
+    if (isSignalLike(value)) return value;
+    if (isWrappedNode(value)) return value;
     if (isLeaf?.(value) === true) return wrapLeaf(value);
 
     if (Array.isArray(value)) {
@@ -343,6 +349,10 @@ export function deepUnwrap<T>(x: any, seen: WrapCache = new WeakMap()): T {
 
 /* ==================== SignalMap ===================== */
 
+export function isWrappedNode(x: any): boolean {
+  return !!(x && typeof x === 'object' && (x as any)[STM_NODE_ID] != null);
+}
+
 export class SignalMap<T, M extends LeafMode = 'deep'> extends Signal<
   ReadonlyArray<DeepSignal<T, M>>
 > {
@@ -388,6 +398,9 @@ export class SignalMap<T, M extends LeafMode = 'deep'> extends Signal<
   }
 
   /* ---------- id helpers ---------- */
+  private mutate<R>(fn: () => R): R {
+    return untracked(fn);
+  }
 
   /** Stable numeric id для элемента (React-key / effectEach-key) */
   idOf(item: DeepSignal<T, M>): number {
@@ -407,9 +420,11 @@ export class SignalMap<T, M extends LeafMode = 'deep'> extends Signal<
   }
 
   at(index: number): DeepSignal<T, M> | undefined {
-    const arr = this.v ?? [];
-    const i = index < 0 ? arr.length + index : index;
-    return arr[i];
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      const i = index < 0 ? arr.length + index : index;
+      return arr[i];
+    });
   }
 
   toArray(): DeepSignal<T, M>[] {
@@ -572,189 +587,221 @@ export class SignalMap<T, M extends LeafMode = 'deep'> extends Signal<
     rel: number = 0,
     key: Extract<keyof T, PropertyKey> = 'id' as any
   ): void {
-    const arr = this.v ?? [];
-    const len = arr.length;
-    if (!len) return;
+    this.mutate(() => {
+      const arr = this.v ?? [];
+      const len = arr.length;
+      if (!len) return;
 
-    const readKey = (item: DeepSignal<T, M>): PropertyKey | undefined => {
-      const base = isSignalLike(item) ? (item as any).v : (item as any);
-      const raw = base?.[key];
+      const readKey = (item: DeepSignal<T, M>): PropertyKey | undefined => {
+        const base = isSignalLike(item) ? (item as any).v : (item as any);
+        const raw = base?.[key];
+        return isSignalLike(raw) ? (raw as any).v : raw;
+      };
 
-      if (isSignalLike(raw)) return (raw as any).v;
-      return raw as any;
-    };
+      const fromIndex = arr.findIndex((it) => readKey(it) === fromId);
+      if (fromIndex === -1) return;
 
-    const fromIndex = arr.findIndex((it) => readKey(it) === fromId);
-    if (fromIndex === -1) return;
+      if (targetId == null) {
+        if (len <= 1) return;
+        this.move(fromIndex, len - 1, 1);
+        return;
+      }
 
-    if (targetId == null) {
-      if (len <= 1) return;
-      this.move(fromIndex, len - 1, 1);
-      return;
-    }
+      const toIndex = arr.findIndex((it) => readKey(it) === targetId);
+      if (toIndex === -1) {
+        if (len <= 1) return;
+        this.move(fromIndex, len - 1, 1);
+        return;
+      }
 
-    const toIndex = arr.findIndex((it) => readKey(it) === targetId);
-    if (toIndex === -1) {
-      if (len <= 1) return;
-      this.move(fromIndex, len - 1, 1);
-      return;
-    }
-
-    this.move(fromIndex, toIndex, rel);
+      this.move(fromIndex, toIndex, rel);
+    });
   }
 
   move(from: number, to: number, rel: number = 0): void {
-    const arr = this.v ?? [];
-    const len = arr.length;
-    if (len < 2) return;
-    if (from < 0 || from >= len) return;
-    if (to < 0 || to >= len) return;
+    this.mutate(() => {
+      const arr = this.v ?? [];
+      const len = arr.length;
+      if (len < 2) return;
+      if (from < 0 || from >= len) return;
+      if (to < 0 || to >= len) return;
 
-    if (rel === 0) {
-      if (from === to) return;
+      if (rel === 0) {
+        if (from === to) return;
+        const next = arr.slice();
+        [next[from], next[to]] = [next[to], next[from]];
+        this.assign(next);
+        return;
+      }
+
       const next = arr.slice();
-      const tmp = next[from];
-      next[from] = next[to];
-      next[to] = tmp;
+      const [item] = next.splice(from, 1);
+
+      let dest = rel < 0 ? to + rel + 1 : to + rel;
+      if (from < dest) dest--;
+      dest = Math.max(0, Math.min(dest, next.length));
+
+      next.splice(dest, 0, item);
       this.assign(next);
-      return;
-    }
-
-    const next = arr.slice();
-    const [item] = next.splice(from, 1);
-
-    let dest = rel < 0 ? to + rel + 1 : to + rel;
-
-    if (from < dest) dest--;
-
-    dest = Math.max(0, Math.min(dest, next.length));
-    next.splice(dest, 0, item);
-    this.assign(next);
+    });
   }
-
+  removeRef(item: DeepSignal<T, M>): void {
+    this.mutate(() => {
+      const arr = this.v ?? [];
+      const idx = arr.indexOf(item);
+      if (idx === -1) return;
+      this.removeAt(idx);
+    });
+  }
   push(...items: T[]): number {
-    const arr = this.v ?? [];
-    if (!items.length) return arr.length;
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      if (!items.length) return arr.length;
 
-    const next = arr.slice();
-    for (const item of items) next.push(this.wrap(item));
-    this.assign(next);
-    return next.length;
+      const next = arr.slice();
+      for (const item of items) next.push(this.wrap(item));
+      this.assign(next);
+      return next.length;
+    });
   }
 
   unshift(...items: T[]): number {
-    const arr = this.v ?? [];
-    if (!items.length) return arr.length;
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      if (!items.length) return arr.length;
 
-    const next = arr.slice();
-    for (let i = items.length - 1; i >= 0; i--) next.unshift(this.wrap(items[i]));
-    this.assign(next);
-    return next.length;
+      const next = arr.slice();
+      for (let i = items.length - 1; i >= 0; i--) {
+        next.unshift(this.wrap(items[i]));
+      }
+      this.assign(next);
+      return next.length;
+    });
   }
 
   pop(): DeepSignal<T, M> | undefined {
-    const arr = this.v ?? [];
-    if (!arr.length) return undefined;
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      if (!arr.length) return undefined;
 
-    const next = arr.slice();
-    const res = next.pop();
-    this.assign(next);
-    return res;
+      const next = arr.slice();
+      const res = next.pop();
+      this.assign(next);
+      return res;
+    });
   }
 
   shift(): DeepSignal<T, M> | undefined {
-    const arr = this.v ?? [];
-    if (!arr.length) return undefined;
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      if (!arr.length) return undefined;
 
-    const next = arr.slice();
-    const res = next.shift();
-    this.assign(next);
-    return res;
+      const next = arr.slice();
+      const res = next.shift();
+      this.assign(next);
+      return res;
+    });
   }
 
   splice(start: number, deleteCount?: number, ...items: T[]): DeepSignal<T, M>[] {
-    const arr = this.v ?? [];
-    const next = arr.slice();
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      const next = arr.slice();
 
-    const len = next.length;
-    const from = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
-    const dc =
-      deleteCount === undefined ? len - from : Math.max(0, Math.min(deleteCount, len - from));
+      const len = next.length;
+      const from = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
+      const dc =
+        deleteCount === undefined ? len - from : Math.max(0, Math.min(deleteCount, len - from));
 
-    const wrapped = items.map((item) => this.wrap(item));
-    const removed = next.splice(from, dc, ...wrapped);
+      const wrapped = items.map((item) => this.wrap(item));
+      const removed = next.splice(from, dc, ...wrapped);
 
-    this.assign(next);
-    return removed;
+      this.assign(next);
+      return removed;
+    });
   }
 
   sort(compareFn?: (a: DeepSignal<T, M>, b: DeepSignal<T, M>) => number): this {
-    const arr = this.v ?? [];
-    const next = arr.slice().sort(compareFn as any);
-    if (arr.length === next.length && arr.every((x, i) => x === next[i])) return this;
-    this.assign(next);
-    return this;
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      const next = arr.slice().sort(compareFn as any);
+      if (arr.length === next.length && arr.every((x, i) => x === next[i])) return this;
+      this.assign(next);
+      return this;
+    });
   }
 
   reverse(): this {
-    const arr = this.v ?? [];
-    const next = arr.slice().reverse();
-    this.assign(next);
-    return this;
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      const next = arr.slice().reverse();
+      this.assign(next);
+      return this;
+    });
   }
 
   setAt(index: number, updater: (item: DeepSignal<T, M>) => void): void {
-    const arr = this.v ?? [];
-    if (!arr[index]) return;
-    updater(arr[index]);
-    this.assign(arr.slice());
+    this.mutate(() => {
+      const arr = this.v ?? [];
+      if (!arr[index]) return;
+      updater(arr[index]);
+      this.assign(arr.slice());
+    });
   }
 
   replaceAt(index: number, value: T): void {
-    const arr = this.v ?? [];
-    if (!arr[index]) return;
+    this.mutate(() => {
+      const arr = this.v ?? [];
+      if (!arr[index]) return;
 
-    const wrapped = this.wrap(value);
-    if (arr[index] === wrapped) return;
+      const wrapped = this.wrap(value);
+      if (arr[index] === wrapped) return;
 
-    const next = arr.slice();
-    next[index] = wrapped;
-    this.assign(next);
+      const next = arr.slice();
+      next[index] = wrapped;
+      this.assign(next);
+    });
   }
 
   with(index: number, value: T): this {
-    const arr = this.v ?? [];
-    if (index < 0 || index >= arr.length) return this;
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      if (index < 0 || index >= arr.length) return this;
 
-    const wrapped = this.wrap(value);
-    if (arr[index] === wrapped) return this;
+      const wrapped = this.wrap(value);
+      if (arr[index] === wrapped) return this;
 
-    const next = arr.slice();
-    next[index] = wrapped;
-    this.assign(next);
-    return this;
+      const next = arr.slice();
+      next[index] = wrapped;
+      this.assign(next);
+      return this;
+    });
   }
 
   insertAt(index: number, value: T): void {
-    const arr = this.v ?? [];
-    let idx = index | 0;
-    if (idx < 0) idx = 0;
-    if (idx > arr.length) idx = arr.length;
+    this.mutate(() => {
+      const arr = this.v ?? [];
+      let idx = index | 0;
+      if (idx < 0) idx = 0;
+      if (idx > arr.length) idx = arr.length;
 
-    const wrapped = this.wrap(value);
-    const next = arr.slice();
-    next.splice(idx, 0, wrapped);
-    this.assign(next);
+      const wrapped = this.wrap(value);
+      const next = arr.slice();
+      next.splice(idx, 0, wrapped);
+      this.assign(next);
+    });
   }
 
   removeAt(index: number): DeepSignal<T, M> | undefined {
-    const arr = this.v ?? [];
-    if (index < 0 || index >= arr.length) return undefined;
+    return this.mutate(() => {
+      const arr = this.v ?? [];
+      if (index < 0 || index >= arr.length) return undefined;
 
-    const next = arr.slice();
-    const [removed] = next.splice(index, 1);
-    this.assign(next);
-    return removed;
+      const next = arr.slice();
+      const [removed] = next.splice(index, 1);
+      this.assign(next);
+      return removed;
+    });
   }
 
   findIndex(
@@ -776,22 +823,30 @@ export class SignalMap<T, M extends LeafMode = 'deep'> extends Signal<
       array: ReadonlyArray<DeepSignal<T, M>>
     ) => boolean
   ): void {
-    const arr = this.v ?? [];
-    const next: DeepSignal<T, M>[] = [];
-    for (let i = 0; i < arr.length; i++) if (predicate(arr[i], i, arr)) next.push(arr[i]);
-    if (next.length !== arr.length) this.assign(next);
+    this.mutate(() => {
+      const arr = this.v ?? [];
+      const next: DeepSignal<T, M>[] = [];
+      for (let i = 0; i < arr.length; i++) {
+        if (predicate(arr[i], i, arr)) next.push(arr[i]);
+      }
+      if (next.length !== arr.length) this.assign(next);
+    });
   }
 
   clear(): void {
-    if ((this.v ?? []).length === 0) return;
-    this.assign([]);
+    this.mutate(() => {
+      if ((this.v ?? []).length === 0) return;
+      this.assign([]);
+    });
   }
 
   replaceAll(items: readonly T[]): void {
-    const curr = this.v ?? [];
-    const next = items.map((item) => this.wrap(item));
-    if (curr.length === next.length && curr.every((x, i) => x === next[i])) return;
-    this.assign(next);
+    this.mutate(() => {
+      const curr = this.v ?? [];
+      const next = items.map((item) => this.wrap(item));
+      if (curr.length === next.length && curr.every((x, i) => x === next[i])) return;
+      this.assign(next);
+    });
   }
 }
 

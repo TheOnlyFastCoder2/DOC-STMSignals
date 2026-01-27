@@ -626,7 +626,8 @@ export class Effect {
       this.priority = priorityOrMode;
     }
 
-    if (opts?.lazy) enqueueOrBatch(this);
+    const lazy = opts?.lazy ?? true;
+    if (lazy) enqueueOrBatch(this);
     else this.run();
   }
 

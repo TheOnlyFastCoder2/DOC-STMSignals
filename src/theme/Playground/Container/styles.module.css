@@ -1,0 +1,26 @@
+.playgroundContainer {
+  margin-bottom: var(--ifm-leading);
+
+  border-radius: var(--ifm-global-radius);
+  overflow: hidden;
+
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--ifm-font-color-base) 6%, transparent),
+    color-mix(in srgb, var(--ifm-font-color-base) 3%, transparent)
+  );
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  box-shadow:
+    var(--shadow-soft),
+    inset 0 1px 0 color-mix(in srgb, var(--ifm-font-color-base) 6%, transparent);
+
+  border: 1px solid color-mix(in srgb, var(--ifm-font-color-base) 8%, transparent);
+
+  transition:
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+/*1e2124 191c1f*/

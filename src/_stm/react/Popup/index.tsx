@@ -15,6 +15,7 @@ export interface Props extends PropsWithChildren {
   onCloseStart?: () => void;
   onCloseEnd?: () => void;
   isTeleport?: boolean;
+  style?: React.CSSProperties;
 }
 
 export default function Popup({
@@ -28,10 +29,11 @@ export default function Popup({
   onCloseStart,
   onCloseEnd,
   isTeleport = true,
+  style,
+  ...props
 }: Props) {
   const refPopup = useRef<HTMLDivElement>(null);
 
-  // отвечает ТОЛЬКО за рендер / анимацию
   const isVisible = useSignal(false);
   const isClosing = useSignal(false);
 
@@ -41,11 +43,9 @@ export default function Popup({
   useWatch(() => {
     const open = isOpen.v;
 
-    // ✅ токен меняем только на смене open/close
     tokenRef.current++;
     const token = tokenRef.current;
 
-    // ✅ OPEN
     if (open) {
       if (timerRef.current != null) {
         clearTimeout(timerRef.current);
@@ -58,8 +58,6 @@ export default function Popup({
       return;
     }
 
-    // ✅ CLOSE
-    // ВАЖНО: читаем НЕ реактивно, иначе эффект сам себя перезапускает
     if (!isVisible.u || isClosing.u) return;
 
     isClosing.v = true;
@@ -69,7 +67,6 @@ export default function Popup({
     if (timerRef.current != null) clearTimeout(timerRef.current);
 
     timerRef.current = window.setTimeout(() => {
-      // ✅ если успели открыть заново — игнорируем старое закрытие
       if (tokenRef.current !== token) return;
 
       refPopup.current?.removeAttribute('remove');
@@ -101,6 +98,8 @@ export default function Popup({
         ref={refPopup}
         onClick={handleClickOverlay}
         className={`${$.Popup} ${$[mode]} ${className}`}
+        style={style}
+        {...props}
       >
         <div onClick={(e) => e.stopPropagation()} className={`${$.content} ${classNameContent}`}>
           {children}

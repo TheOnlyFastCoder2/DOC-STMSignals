@@ -1,43 +1,420 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
 /**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
+ * GLOBAL THEME — MODERN TECH
+ * Drop-in replacement / extension
  */
 
-/* You can override the default Infima variables here. */
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-container-width: 1140px;
+  --ifm-container-width-xl: 100%;
+  --doc-sidebar-width: 80%;
+  /* Brand */
+  --ifm-color-primary: #2dd4bf;
+  --ifm-color-primary-dark: #14b8a6;
+  --ifm-color-primary-darker: #0d9488;
+  --ifm-color-primary-darkest: #0f766e;
+  --ifm-color-primary-light: #5eead4;
+  --ifm-color-primary-lighter: #99f6e4;
+  --ifm-color-primary-lightest: #ccfbf1;
+
+  /* UI */
+  --ifm-font-family-base: 'IBM Plex Sans', system-ui, sans-serif;
+
+  --ifm-heading-font-weight: 700;
+  --ifm-code-font-size: 92%;
+  --ifm-global-radius: 14px;
+
+  --text-body-weight: 400;
+  --text-body-weight-light: 350;
+  --text-body-color: rgba(20, 23, 28, 0.85);
+
+  /* Surfaces */
+  --ifm-background-color: linear-gradient(180deg, #ffffff 0%, #f9fafb 60%, #f6f7f9 100%);
+  --ifm-navbar-background-color: rgba(255, 255, 255, 0.85);
+  --ifm-footer-background-color: #f8fafc;
+
+  /* Effects */
+  --shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 12px 40px rgba(0, 0, 0, 0.12);
+
+  --docusaurus-highlighted-code-line-bg: rgba(45, 212, 191, 0.12);
+  --surface-code-bg: #ffffff;
+
+  --shadow-code: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 10px 32px rgba(143, 145, 159, 0.24);
+
+  --hero-accent: color-mix(in srgb, var(--ifm-color-primary-light) 70%, #4ade80 30%);
+
+  --text-body-size: max(clamp(0.781rem, calc(0.692rem + 0.382vw), 0.875rem), 0.972vw);
+  /* 12.5px @375px → 14px @768px */
+
+  --text-table-size: max(clamp(0.688rem, calc(1.054rem - 0.763vw), 0.875rem), 0.764vw);
+  /* 14px @375px → 11px @768px */
+  --text-body-line-height: 1.55;
+  --text-body-weight: 400;
+  --doc-sidebar-width: 100%;
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
+/* ---------------- DARK MODE ---------------- */
+
+/* --------- SOFT DARK MODE (READABLE) --------- */
+
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  /* Backgrounds */
+  --ifm-background-color: #0e1016;
+
+  --ckground-surface-color: #151a1e;
+  --ifm-navbar-background-color: rgba(14, 17, 20, 0.95);
+  --ifm-footer-background-color: #0b0e11;
+
+  /* Text */
+  --ifm-font-color-base: #e6e8eb; /* не чисто белый */
+  --ifm-heading-color: #f1f5f9;
+  --ifm-color-content-secondary: #a1a1aa;
+  --text-body-color: rgba(230, 232, 235, 0.82);
+
+  --heading-color-soft: rgba(235, 238, 242, 0.98);
+  --heading-color-muted: rgba(235, 238, 242, 0.72);
+
+  /* Brand */
+  --ifm-color-primary: #2dd4bf;
+  --ifm-color-primary-dark: #22c3ad;
+  --ifm-color-primary-darker: #14b8a6;
+  --ifm-color-primary-darkest: #0f766e;
+  --ifm-color-primary-light: #5eead4;
+  --ifm-color-primary-lighter: #99f6e4;
+  --ifm-color-primary-lightest: #ccfbf1;
+
+  /* Code */
+  --docusaurus-highlighted-code-line-bg: rgba(45, 212, 191, 0.18);
+
+  /* Shadows */
+  --shadow-soft: 0 10px 40px rgba(0, 0, 0, 0.45);
+  --shadow-hover: 0 16px 60px rgba(0, 0, 0, 0.65);
+
+  --surface-code-dark: #0b090e;
+  --surface-code-light: #f8fafc;
+  --surface-code-bg: #ffffff;
+  --surface-code-bg: #0b0d11;
+
+  --shadow-code: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 10px 32px rgba(0, 0, 0, 0.45);
+}
+[data-theme='light'] .prism-code,
+[data-theme='light'] .prism-code * {
+  text-shadow: none !important;
+}
+[data-theme='light'] .prism-code .token.plain {
+  color: rgb(92 93 94) !important;
+}
+/* ---------------- NAVBAR ---------------- */
+/*.theme-doc-markdown {
+  background: rgba(255, 255, 255, 0.01);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+}*/
+html,
+body {
+  background: none;
+}
+.theme-layout-navbar-sidebar.navbar-sidebar {
+  width: 100%;
+}
+.theme-doc-markdown.markdown {
+  @media (max-width: 768px) {
+    padding: unset;
+  }
+}
+.markdown {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  line-height: 1.7;
+}
+.menu__link,
+.table-of-contents__link {
+  font-size: var(--text-table-size);
+  code {
+    padding: 0.1em 0.2em;
+  }
+}
+.markdown p,
+.markdown code,
+.markdown strong,
+.markdown li {
+  font-size: var(--text-body-size);
+}
+.markdown p {
+  line-height: var(--text-body-line-height);
+  font-weight: var(--text-body-weight);
+  code {
+    padding: 0.1em 0.2em;
+  }
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5 {
+  color: var(--heading-color-soft);
+  font-weight: 600;
+  width: 100%;
+
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+
+.markdown h1,
+.markdown h1:first-child,
+.markdown h1 * {
+  --ifm-h1-font-size: max(clamp(2.75rem, calc(1.75rem + 2.222vw), 3.75rem), 4.167vw);
+  /* 44px @720px → 60px @1440px */
+  font-size: var(--ifm-h1-font-size);
+  line-height: 1.08;
+  margin-bottom: 0.6em;
+}
+
+.markdown h2,
+.markdown h2:first-child,
+.markdown h2 * {
+  --ifm-h2-font-size: max(clamp(2.125rem, calc(1.375rem + 1.667vw), 2.875rem), 3.194vw);
+  /* 34px @720px → 46px @1440px */
+
+  font-size: var(--ifm-h2-font-size);
+  line-height: 1.12;
+  margin-bottom: 0.6em;
+}
+
+.markdown h3,
+.markdown h3:first-child,
+.markdown h3 * {
+  --ifm-h3-font-size: max(clamp(1.625rem, calc(1.125rem + 1.111vw), 2.125rem), 2.361vw);
+  /* 26px @720px → 34px @1440px */
+  font-size: var(--ifm-h3-font-size);
+  line-height: 1.18;
+  margin-bottom: 0.55em;
+}
+
+.markdown h4,
+.markdown h4:first-child,
+.markdown h4 * {
+  --ifm-h4-font-size: max(clamp(1.25rem, calc(0.875rem + 0.833vw), 1.625rem), 1.806vw);
+  /* 20px @720px → 26px @1440px */
+  font-size: var(--ifm-h4-font-size);
+  line-height: 1.25;
+  margin-bottom: 0.5em;
+}
+
+.markdown h5,
+.markdown h5:first-child,
+.markdown h5 * {
+  --ifm-h5-font-size: max(clamp(1.063rem, calc(0.875rem + 0.417vw), 1.25rem), 1.389vw);
+  /* 17px @720px → 20px @1440px */
+  font-size: var(--ifm-h5-font-size);
+  line-height: 1.3;
+  margin-bottom: 0.45em;
+}
+
+.markdown h6,
+.markdown h6:first-child,
+.markdown h6 * {
+  --ifm-h6-font-size: max(clamp(0.938rem, calc(0.813rem + 0.278vw), 1.063rem), 1.181vw);
+  /* 15px @720px → 17px @1440px */
+  font-size: var(--ifm-h6-font-size);
+  line-height: 1.35;
+  margin-bottom: 0.4em;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  justify-content: cente;
+  min-width: 85vw;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+
+  background: var(--ifm-background-color);
+  background-repeat: no-repeat;
+  background-size: cover;
+
+  will-change: transform;
+}
+
+aside.theme-doc-sidebar-container {
+  border: none;
+  background: transparent;
+  z-index: 1;
+  width: 100%;
+}
+
+/* glass surface */
+[data-theme='dark'] aside.theme-doc-sidebar-container::before {
+  content: '';
+  position: fixed;
+
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.015) 60%,
+    rgba(255, 255, 255, 0.008) 100%
+  );
+}
+:root aside.theme-doc-sidebar-container::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.025) 55%,
+    rgba(255, 255, 255, 0.015) 100%
+  );
+
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  box-shadow:
+    inset -1px 0 0 rgba(0, 0, 0, 0.04),
+    0 10px 28px rgba(143, 145, 159, 0.18);
+}
+
+.navbar__link {
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.navbar__link:hover {
+  color: var(--ifm-color-primary);
+}
+nav {
+  backdrop-filter: blur(12px);
+}
+/* ---------------- HERO ---------------- */
+
+.hero {
+  background: radial-gradient(1200px circle at top, rgba(45, 212, 191, 0.15), transparent 60%);
+}
+
+.hero__title {
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  letter-spacing: -0.02em;
 }
 
 .hero__subtitle {
-  width: min(100%, 600px);
-  margin: auto;
-  margin-bottom: 30px;
-}
-
-.hero__subtitle {
+  max-width: 640px;
+  margin: 24px auto 40px;
+  opacity: 0.85;
   display: flex;
   justify-content: center;
-  align-items: center;
   gap: 20px;
+}
+
+/* ---------------- CARDS / CONTENT ---------------- */
+
+.card {
+  border-radius: var(--ifm-global-radius);
+  box-shadow: var(--shadow-soft);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* ---------------- CODE BLOCKS ---------------- */
+
+.theme-code-block {
+  background-color: var(--surface-code-bg);
+  box-shadow: var(--shadow-code);
+
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* ---------------- SIDEBAR ---------------- */
+
+.menu__link {
+  border-radius: 10px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.menu__link--active {
+  background: rgba(45, 212, 191, 0.15);
+  font-weight: 600;
+}
+
+.menu__list-item-collapsible:has(.menu__link--sublist[aria-expanded='true']) {
+  background: rgba(45, 212, 191, 0.1);
+}
+
+.menu__list-item-collapsible .menu__link--sublist[aria-expanded='true'] {
+  color: var(--ifm-color-primary);
+}
+
+/* ---------------- TABLES ---------------- */
+
+table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+thead {
+  background: rgba(45, 212, 191, 0.1);
+}
+
+/* ---------------- SCROLLBAR (WEBKIT) ---------------- */
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--ifm-color-primary), var(--ifm-color-primary-dark));
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.markdown {
+  line-height: 1.75;
+}
+
+.theme-doc-markdown {
+  padding: 2rem;
+}
+
+.theme-code-block > * {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--ifm-font-color-base) 6%, transparent),
+    color-mix(in srgb, var(--ifm-font-color-base) 3%, transparent)
+  );
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.prism-code {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ifm-font-color-base) 1.2%, transparent),
+    color-mix(in srgb, var(--ifm-font-color-base) 0.8%, transparent)
+  ) !important;
 }

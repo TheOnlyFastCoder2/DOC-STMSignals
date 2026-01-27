@@ -1,0 +1,12 @@
+.playgroundEditor {
+  font: var(--ifm-code-font-size) / var(--ifm-pre-line-height) var(--ifm-font-family-monospace) !important;
+
+  direction: ltr;
+  * {
+    font-size: var(--text-body-size);
+  }
+}
+
+.playgroundEditor pre {
+  border-radius: 0;
+}

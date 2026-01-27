@@ -24,7 +24,7 @@
 
 В итоге ты можешь делать так:
 
-```ts
+```ts live noInline
 type Todo = { id: string; title: string; done: boolean };
 
 const list = signalMap<Todo>([{ id: 'a', title: 'Milk', done: false }]);
@@ -43,9 +43,7 @@ list.at(0)!.done.v = true;
 
 Самый частый сценарий — “у меня есть settings/config/state-объект, хочу реактивность по полям, но не хочу заводить отдельный контейнер”. Тогда просто заворачиваешь и работаешь с полями как с сигналами:
 
-```ts
-import { wrapItemInSignals } from './signalMap';
-
+```ts live noInline
 const settings = wrapItemInSignals({
   theme: 'dark',
   flags: { newUI: true },
@@ -53,6 +51,7 @@ const settings = wrapItemInSignals({
 
 settings.theme.v = 'light';
 settings.flags.newUI.v = false;
+console.log(settings)
 ```
 
 А теперь две ручки, ради которых эта функция вообще заслуживает отдельного абзаца.
@@ -61,10 +60,7 @@ settings.flags.newUI.v = false;
 
 Пример: собираем все leaf-сигналы и выводим снимок одним эффектом (и да — это реально удобно для отладки сложных деревьев):
 
-```ts
-import { wrapItemInSignals } from './signalMap';
-import { effect } from './index';
-
+```ts live noInline
 const leaves: any[] = [];
 
 const user = wrapItemInSignals(
@@ -91,9 +87,7 @@ user.flags.pro.v = false;     // и тут тоже
 
 Пример shared refs: один объект используется в двух местах, но после wrap’а это всё ещё “один персонаж”, а не два клона:
 
-```ts
-import { wrapItemInSignals } from './signalMap';
-
+```ts live noInline
 const shared = { x: 1 };
 const src = { a: shared, b: shared };
 
@@ -107,9 +101,7 @@ console.log(wrapped.b.x.v); // 999
 
 Пример циклов: объект указывает на себя, и мы всё равно остаёмся в живых — и wrap, и дальнейшие операции работают корректно:
 
-```ts
-import { wrapItemInSignals, deepUnwrap } from './signalMap';
-
+```ts live noInline
 type Node = { name: string; next?: Node };
 
 const n: Node = { name: 'A' };
@@ -127,12 +119,12 @@ console.log(raw.name); // 'B'
 
 Если хочется “стабильной личности” для обёрток между разными вызовами `wrapItemInSignals`, можно использовать один и тот же `seen` как общий кеш — это ровно та же идея, что и `nodeCache` в `SignalMap`: один объект по ссылке → одна обёртка по ссылке.
 
-```ts
-const cache = new WeakMap<object, unknown>();
+```ts live noInline
+const _cache = new WeakMap<object, unknown>();
 
 const a = { x: 1 };
-const w1 = wrapItemInSignals(a, undefined, cache);
-const w2 = wrapItemInSignals(a, undefined, cache);
+const w1 = wrapItemInSignals(a, undefined, _cache);
+const w2 = wrapItemInSignals(a, undefined, _cache);
 
 console.log(w1 === w2); // true
 ```
@@ -144,10 +136,9 @@ console.log(w1 === w2); // true
 
 Когда может понадобиться: ты хочешь сериализовать состояние, сделать snapshot в тесте, или просто вывести “нормальные данные”, а не лес `.v`.
 
-```ts
-import { deepUnwrap } from './signalMap';
-
-const raw = deepUnwrap(list.at(0)!);
+```ts live noInline
+const list = signalMap<Todo>([{ id: 'a', title: 'Milk', done: false }]);
+const raw = deepUnwrap(list.at(0));
 console.log(raw); // { id: 'a', title: 'Oat milk', done: true }
 ```
 
