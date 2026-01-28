@@ -1,0 +1,184 @@
+.CheckBox {
+  --width: calc(max(5.556vw, 80px) / 1.2);
+  --height: calc(max(2.778vw, 40px) / 1.2);
+  width: var(--width);
+  height: var(--height);
+
+  border-radius: max(1.389vw, 20px);
+  border: max(0.139vw, 2px) solid #fff;
+  border-radius: max(3.472vw, 50px);
+
+  box-shadow:
+    max(0.069vw, 1px) max(0.069vw, 1px) max(0.278vw, 4px) 0 rgba(255, 255, 255, 0.1),
+    max(0.347vw, 5px) max(0.417vw, 6px) max(0.486vw, 7px) 0 rgba(255, 255, 255, 0.09),
+    max(0.694vw, 10px) max(0.903vw, 13px) max(0.694vw, 10px) 0 rgba(255, 255, 255, 0.05),
+    max(1.25vw, 18px) max(1.597vw, 23px) max(0.833vw, 12px) 0 rgba(255, 255, 255, 0.01),
+    max(1.944vw, 28px) max(2.5vw, 36px) max(0.903vw, 13px) 0 rgba(255, 255, 255, 0);
+
+  background: rgba(16, 16, 16, 0.13);
+  cursor: pointer;
+
+  &.active .inner {
+    .box {
+      transform: translateX(calc(var(--width) - var(--height)));
+    }
+  }
+  &:not(.active) {
+    filter: invert(1);
+    background: rgba(255, 255, 255, 1);
+    svg {
+      fill: #ff4343;
+      stroke: none;
+    }
+  }
+  .inner {
+    width: 100%;
+    height: 100%;
+    position: relative;
+
+    .box {
+      display: flex;
+      position: absolute;
+      justify-content: center;
+      align-items: center;
+      height: 100%;
+      aspect-ratio: 2 / 2;
+      border-radius: max(1.389vw, 20px);
+      transition: transform 0.3s ease-out;
+      background: #ededed;
+      box-shadow:
+        0 0 max(0.278vw, 4px) 0 #ededed,
+        0 0 max(0.556vw, 8px) 0 #ededed,
+        0 0 max(1.875vw, 27px) 0 #ededed,
+        0 0 max(3.75vw, 54px) 0 #ededed,
+        0 0 max(6.389vw, 92px) 0 #ededed,
+        0 0 max(11.181vw, 161px) 0 #ededed;
+
+      .icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+  }
+}
+
+.ModalWins {
+  .header {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  /* базовая кнопка */
+  .header button {
+    padding: 0.45rem 0.9rem;
+
+    font-family: var(--ifm-font-family-base);
+    font-size: 0.8rem;
+    font-weight: 500;
+
+    color: rgba(235, 238, 242, 0.85);
+
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--ifm-font-color-base) 14%, transparent);
+
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ifm-font-color-base) 6%, transparent),
+      color-mix(in srgb, var(--ifm-font-color-base) 3%, transparent)
+    );
+
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 6px 20px rgba(0, 0, 0, 0.45);
+
+    cursor: pointer;
+
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease,
+      color 0.2s ease,
+      transform 0.15s ease,
+      box-shadow 0.2s ease;
+  }
+
+  /* hover */
+  .header button:hover {
+    color: rgba(240, 255, 255, 0.95);
+
+    border-color: color-mix(in srgb, var(--ifm-color-primary-light) 45%, transparent);
+
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ifm-color-primary) 18%, transparent),
+      color-mix(in srgb, var(--ifm-color-primary) 8%, transparent)
+    );
+
+    transform: translateY(-1px);
+
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 10px 30px rgba(0, 0, 0, 0.55);
+  }
+
+  /* active (нажатие) */
+  .header button:active {
+    transform: translateY(0);
+    box-shadow:
+      inset 0 1px 2px rgba(0, 0, 0, 0.6),
+      0 6px 16px rgba(0, 0, 0, 0.45);
+  }
+
+  /* кнопки открытия / закрытия */
+  .header button:first-child {
+    border-color: color-mix(in srgb, var(--ifm-color-primary-light) 40%, transparent);
+  }
+
+  .header button:nth-child(2) {
+    color: rgb(248 113 113);
+    border-color: color-mix(in srgb, rgb(248 113 113) 35%, transparent);
+  }
+
+  .header button:nth-child(2):hover {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, rgb(248 113 113) 20%, transparent),
+      color-mix(in srgb, rgb(248 113 113) 10%, transparent)
+    );
+  }
+
+  /* переключение Modal1 / Modal2 */
+  .header button:nth-child(n + 3) {
+    letter-spacing: 0.03em;
+  }
+}
+.ModalTest {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  .ModalTest,
+  & {
+    width: fit-content;
+  }
+  .ModalTestHeader {
+    background: red;
+    width: max(18rem, 18vw);
+    height: max(12rem, 14vw);
+  }
+}
+
+.DragLike {
+  width: 300px;
+  height: 400px;
+  border: 1px solid red;
+
+  div {
+    width: fit-content;
+    background-color: blue;
+  }
+}
