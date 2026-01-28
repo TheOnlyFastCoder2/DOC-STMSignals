@@ -1,4 +1,4 @@
-# Active — контроль жизни DOM
+# Active - контроль жизни DOM
 
 ## Введение
 
@@ -34,15 +34,70 @@ Active — это маленький реактивный “привратни�
 
 `type` хранит “какая сцена сейчас”. Каждый `Active` просто смотрит на `type.v` и решает: *мне жить или мне уйти*.
 
-```tsx
-const type = useSignal<'Modal1' | 'Modal2'>('Modal1');
-
-<Popup /* ... */>
-  <DraggableTest>
-    <Active sg={type} is={'Modal1'} ch={() => <Modal1 />} />
-    <Active sg={type} is={'Modal2'} ch={() => <Modal2 />} />
-  </DraggableTest>
-</Popup>
+```tsx live noInline render(<App />)
+function useModalViwer() {
+  const isOpen = useSignal(false);
+  const type = useSignal('Modal1');
+  
+  return {
+    isOpen,type,
+    Popup: () => (
+      <Popup
+        className={$.ModalTest}
+        classNameContent={$.ModalTestContent}
+        isOpen={isOpen}
+        delay={400}
+      >
+        <Spring isActive={isOpen} spring={{
+          scale: {
+            values: {default:0.2, active: 1},
+            damping: 4,
+            stiffness: 40,
+          },
+          opacity: {
+            values: {default:0, active: 1},
+            damping: 10,
+            stiffness: 40,
+            speed: 3
+          }
+        }}>
+          <DraggableHeader className={$.ModalTestHeader}>
+            <Active sg={type} is={'Modal1'}>
+              <div>
+                <p>тут какой то текст для</p>
+                <h1>Modal1</h1>
+              </div>
+            </Active>
+            <Active sg={type} is={'Modal2'}>
+              <div>
+                <p>тут какой то текст для</p>
+                <h1>Modal2</h1>
+              </div>
+            </Active>
+          </DraggableHeader>
+        </Spring>
+      </Popup>
+     
+    ),
+  };
+}
+function App () {
+  const { Popup, isOpen, type } = useModalViwer();
+  return (
+   <>
+    <Popup/>
+     <div className={$.ModalWins}>
+       <div className={$.header}>
+         <button onClick={() => (isOpen.v = true)}>toOpen</button>
+         <button onClick={() => (isOpen.v = false)}>toClose</button>
+ 
+         <button onClick={() => (type.v = 'Modal1')}>Modal1</button>
+         <button onClick={() => (type.v = 'Modal2')}>Modal2</button>
+       </div>
+     </div>
+   </>
+  )
+}
 ```
 
 Смысл простой: ты не “условно рендеришь где-то сверху”, ты **точечно отдаёшь конкретному месту** правило жизни. И оно не зависит от того, что там дернулось рядом.
@@ -51,37 +106,49 @@ const type = useSignal<'Modal1' | 'Modal2'>('Modal1');
 
 ## Пример по делу: “галочка живёт отдельно” (и не заставляет тебя писать условия руками)
 
-Чекбокс — мелочь, но показательная: вокруг могут жить атрибуты, ошибки, стили, а вот сама иконка галочки должна появляться только когда `isCheck` true. Обычно это превращается в `isCheck.v ? <Svg/> : null` и расползается по коду. С Active это выглядит как декларация: “вот тут показывай, когда true”.
+Чекбокс — идеальная сцена для `Active`, потому что тут постоянно хочется сделать “переключалку”, но без ручных `?: null` и без лишней возни в JSX. В этом примере сигнал `isActive` отвечает за состояние, а `Active` превращает это состояние в **контроль жизни DOM**: когда `isActive` `true` — в разметку реально монтируется только `SVGSun`, когда `false` — только `SVGMoon`. То есть иконки не “прячутся стилями”, а буквально появляются и исчезают как отдельные узлы. Параллельно `useWatch` спокойно занимается контейнером (классы/стили/атрибуты) и не смешивается с логикой “что рисовать” — `Active` берёт на себя именно это решение, делая переключение чище и предсказуемее.
 
-```tsx
-interface Props {
-  onChange?: (v: boolean) => void;
-  initValue?: boolean;
-  isError?: Signal<boolean>;
+```tsx live noInline render(<CheckBox />)
+interface CheckBoxProps {
+  className?: string;
+  onClick?: (v: boolean, e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
 }
 
-export default function Checker({ initValue = false, isError, onChange }: Props) {
-  const isCheck = useSignal(initValue);
-  const refDiv = useRef<HTMLDivElement>(null);
+function CheckBox({ className, onClick }: CheckBoxProps) {
+  const isActive = useSignal(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useWatch(() => {
-    refDiv.current?.toggleAttribute?.('active', isCheck.v);
-    refDiv.current?.toggleAttribute?.('error', !!isError?.v);
-  }, [isError]);
-
-  const onClick = () => {
-    isCheck.v = !isCheck.v;
-    onChange?.(isCheck.v);
-  };
-
+    const active = isActive.v;
+    const el = ref.current;
+    if (!el) return;
+    el.classList.toggle($.active, active);
+    console.log('active', active);
+  });
   return (
-    <div className={$.Checker} onClick={onClick} ref={refDiv}>
-      <Active sg={isCheck} is={true}>
-        <Svg className={$.icon} />
-      </Active>
+    <div
+      ref={ref}
+      className={ `${$.CheckBox} ${className}` }
+      data-button="data-button"
+      onClick={(el) => {
+        isActive.v = !isActive.v;
+        onClick?.(isActive.v, el);
+      }}
+    >
+      <div className={$.inner}>
+        <div className={$.box}>
+          <Active sg={isActive} is={true}>
+            <SVGSun className={$.icon} />
+          </Active>
+          <Active sg={isActive} is={false}>
+            <SVGMoon className={$.icon} />
+          </Active>
+        </div>
+      </div>
     </div>
   );
 }
+
 ```
 
 ---

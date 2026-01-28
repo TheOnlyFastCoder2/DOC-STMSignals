@@ -118,6 +118,10 @@ body {
 }
 .theme-layout-navbar-sidebar.navbar-sidebar {
   width: 100%;
+  height: 100vh;
+  .menu:last-child {
+    width: 100vw;
+  }
 }
 .theme-doc-markdown.markdown {
   @media (max-width: 768px) {

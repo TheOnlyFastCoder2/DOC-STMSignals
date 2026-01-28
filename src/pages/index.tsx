@@ -13,6 +13,9 @@ import Media from '../components/Media';
 import srcVideo from './video.webm';
 import { Spring } from '../_stm/react/animation/Spring';
 import { Sig, useSignal } from '../_stm/react/react';
+import Popup from '../_stm/react/Popup';
+import DraggableHeader from '../components/Draggable';
+import { Active } from '../_stm/react/Active';
 
 function HomepageHeader() {
   const { siteConfig } = useDocusaurusContext();
@@ -58,7 +61,6 @@ export default function Home(): ReactNode {
       description="Description will go into a meta tag in <head />"
     >
       <Notifications />
-
       <HomepageHeader />
     </Layout>
   );

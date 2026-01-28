@@ -8,7 +8,14 @@ type UseSpringMouseOpts = {
   isMove?: BoolLike;
   mouseStrength?: number;
   isReverse?: boolean;
-  onMouse: (x: number, y: number, rotateX: number, rotateY: number) => void;
+  onMouse: (
+    mouseX: number,
+    mouseY: number,
+    normX: number,
+    normY: number,
+    rotateX: number,
+    rotateY: number
+  ) => void;
 };
 
 export function useSpringMouse({
@@ -29,7 +36,7 @@ export function useSpringMouse({
       if (!target) return;
 
       if (isTouch || !moveEnabled) {
-        onMouse(0, 0, 0, 0);
+        onMouse(0, 0, 0, 0, 0, 0, 0, 0);
         return;
       }
 
@@ -54,8 +61,11 @@ export function useSpringMouse({
             }
           : target.getBoundingClientRect();
 
-        const nx = (lastX - rect.left - rect.width / 2) / (rect.width / 2);
-        const ny = (lastY - rect.top - rect.height / 2) / (rect.height / 2);
+        const mx = lastX - rect.left;
+        const my = lastY - rect.top;
+
+        const nx = (mx - rect.width / 2) / (rect.width / 2);
+        const ny = (my - rect.height / 2) / (rect.height / 2);
 
         const cx = Math.max(-1, Math.min(1, nx));
         const cy = Math.max(-1, Math.min(1, ny));
@@ -64,10 +74,12 @@ export function useSpringMouse({
         const ROTATE_RADIUS = 18;
 
         onMouse(
-          cx,
-          cy,
-          cy * ROTATE_RADIUS * mouseStrength * c,
-          cx * ROTATE_RADIUS * mouseStrength * c
+          mx,
+          my,
+          nx,
+          ny,
+          cx * ROTATE_RADIUS * mouseStrength * c,
+          cy * ROTATE_RADIUS * mouseStrength * c
         );
       };
 

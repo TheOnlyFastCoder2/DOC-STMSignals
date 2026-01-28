@@ -194,7 +194,6 @@ export default function useSpringSignal(
       const steps = Math.max(1, Math.ceil(totalDt / maxStep));
       const h = totalDt / steps;
 
-      // === DISABLED: instantly sync and settle ===
       if (!enabledNow) {
         stopRef.current?.();
         stopRef.current = null;
@@ -215,7 +214,6 @@ export default function useSpringSignal(
       const toU = parseUnitValue(to);
       const ok = typeof to === 'number' || isArray(to) || !!toU;
 
-      // === NOT ANIMATABLE: instantly sync and settle ===
       if (!ok) {
         signal.v = clone(to);
         velRef.current = 0;
@@ -227,7 +225,6 @@ export default function useSpringSignal(
         return false;
       }
 
-      // === ARRAY ===
       if (isArray(to)) {
         let cur = signal.v;
         if (!isArray(cur)) cur = to;
@@ -305,7 +302,6 @@ export default function useSpringSignal(
         return true;
       }
 
-      // === NUMBER ===
       if (typeof signal.v === 'number' && typeof to === 'number') {
         let x = signal.v as number;
         let v = velRef.current as number;
@@ -341,7 +337,6 @@ export default function useSpringSignal(
         return true;
       }
 
-      // === UNIT STRING ===
       const fromU = parseUnitValue(signal.v);
       const toU2 = parseUnitValue(to);
 
@@ -388,7 +383,6 @@ export default function useSpringSignal(
         return true;
       }
 
-      // === fallback instant ===
       signal.v = clone(to);
       velRef.current = 0;
       arrBufRef.current = null;
@@ -403,7 +397,6 @@ export default function useSpringSignal(
   useWatch(() => {
     const to = source.v;
 
-    // init
     if (!didInitRef.current) {
       didInitRef.current = true;
 
@@ -426,7 +419,6 @@ export default function useSpringSignal(
     const isUnit = !!parseUnitValue(to);
     const ok = typeof to === 'number' || Array.isArray(to) || isUnit;
 
-    // ✅ ВАЖНО: тут раньше НЕ было onSettled(), из-за этого settled мог "пропасть"
     if (!ok || !enabledNow) {
       stopRef.current?.();
       stopRef.current = null;
@@ -443,7 +435,6 @@ export default function useSpringSignal(
       optsRef.current.onTick?.();
       optsRef.current.onProgress?.(signal.v, 1);
 
-      // ✅ FIX: гарантированно сообщаем settled
       optsRef.current.onSettled?.();
 
       return;
@@ -452,7 +443,6 @@ export default function useSpringSignal(
     const fromUnit = parseUnitValue(signal.v);
     const toUnit = parseUnitValue(to);
 
-    // normalize initial type
     if (Array.isArray(to) && !Array.isArray(signal.v)) {
       signal.v = clone(to);
       velRef.current = new Array(to.length).fill(0);
@@ -472,7 +462,6 @@ export default function useSpringSignal(
       }
     }
 
-    // new run start/target
     startRef.current = clone(signal.v);
     targetRef.current = clone(to);
     maxProgRef.current = 0;
